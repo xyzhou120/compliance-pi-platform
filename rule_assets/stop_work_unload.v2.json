@@ -1,0 +1,67 @@
+{
+  "itemCode": "stop_work_unload",
+  "name": "冲击危险停工撤人与卸压",
+  "version": "impact-1023-policy-v2-six-materials",
+  "status": "development-draft",
+  "policyRevision": "stop-work-unload-six-materials-2026-10-28",
+  "requiredPropositions": [
+    "trigger",
+    "danger_assessment",
+    "stop",
+    "power_off",
+    "evacuate",
+    "report"
+  ],
+  "propositionGraph": [
+    {"code": "danger_confirmed", "dependsOn": ["danger_assessment"]},
+    {"code": "warning_danger_confirmed", "dependsOn": ["trigger", "danger_confirmed"]},
+    {"code": "response_sequence", "dependsOn": ["stop", "power_off", "evacuate", "report"]},
+    {"code": "relief_measures", "dependsOn": ["warning_danger_confirmed"]},
+    {"code": "continued_after_trigger", "dependsOn": ["trigger"]}
+  ],
+  "materialRequirements": [
+    {"materialGroup": "prevention_daily", "displayName": "防冲工作日报表", "role": "actual_record", "cadence": "daily", "required": true},
+    {"materialGroup": "threshold", "displayName": "冲击危险性预警临界指标", "role": "requirement", "cadence": "annual", "required": false, "purpose": "监测值触发分支需有当时适用阈值；动力现象分支不因此缺证"},
+    {"materialGroup": "dispatch_daily", "displayName": "调度日报", "role": "actual_record", "cadence": "daily", "required": false, "purpose": "触发后用于实际处置时间、范围与调度报告的交叉核对"},
+    {"materialGroup": "release", "displayName": "生产组织通知单", "role": "actual_record", "cadence": "monthly", "required": false, "purpose": "指令层记录，不能单独证明现场实际执行"},
+    {"materialGroup": "relief_acceptance", "displayName": "防冲钻孔验收记录", "role": "actual_record", "cadence": "weekly", "required": false, "purpose": "仅在危险研判为真时作为条件性解危资料"},
+    {"materialGroup": "design", "displayName": "防冲设计", "role": "requirement", "cadence": "annual", "required": false, "purpose": "危险研判为真且需要解危时用于核对措施要求"}
+  ],
+  "conditionalMaterials": [
+    {"when": {"proposition": "trigger", "state": "true"}, "materialGroups": ["dispatch_daily"]},
+    {"when": {"proposition": "warning_danger_confirmed", "state": "true"}, "materialGroups": ["relief_acceptance", "design"]}
+  ],
+  "policies": {
+    "absenceIsNotNegative": true,
+    "candidateCannotCreateNoPass": true,
+    "sourceCompleteRequiredForPass": true,
+    "conflictStatus": "unverifiable",
+    "majorFindingClassification": "suspected_major_hazard",
+    "majorFindingRequiresHumanConfirmation": true,
+    "violationFindingClassification": "suspected_violation",
+    "reviewFindingClassification": "review_required"
+  },
+  "source": {
+    "type": "user_confirmed_policy",
+    "reference": "用户确认的三步核查描述与六类资料清单",
+    "confirmedAt": "2026-10-28",
+    "status": "user-confirmed-policy",
+    "provenance": "本版本按业务确认的六类资料与三步规则执行；历史规则表仅作差分参考"
+  },
+  "legacySource": {"filename": "冲击地压规则1023.xlsx", "sheet": "AI深度监察", "sha256": "e3fc04ca7346bb91bd8868b24efcd42155df1ae68c2a41a5f01a63a0da1e1247", "row": 2},
+  "policySteps": [
+    {"name": "识别触发", "requirements": ["监测原始记录与批准临界指标可比且实测超过", "动力现象且同事件研判为冲击地压危险"]},
+    {"name": "核对处置时序", "requirements": ["停工、断电、按避灾路线撤人、报告调度的时间和范围", "监测预警且危险研判为真时核对卸压施工及验收"]},
+    {"name": "分层判定", "requirements": ["触发、危险确认及明确未停工或未按措施撤人时疑似重大事故隐患，人工确认", "预警、危险确认、明确未卸压且仍采掘时疑似重大事故隐患", "仅明确未断电或未报告调度时疑似违规", "缺证、时间不清或冲突待补证/人工复核"]}
+  ],
+  "findingPolicy": {
+    "suspectedMajorHazard": [
+      "trigger_confirmed_and_danger_true_and_stop_or_evacuate_failure",
+      "warning_danger_true_and_explicit_no_relief_with_continued_mining"
+    ],
+    "suspectedViolation": ["explicit_power_off_failure_only", "explicit_dispatch_report_failure_only"],
+    "reviewRequired": ["missing_evidence", "unclear_time", "conflicted_versions", "unresolved_event_association"],
+    "humanConfirmationRequiredFor": ["suspected_major_hazard"]
+  },
+  "evaluationPolicy": "Only deterministic operators decide the five result statuses; finding classification is evidence-bound and suspected major hazard always requires human confirmation. No automatic statutory major-hazard conclusion is generated."
+}

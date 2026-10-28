@@ -1,0 +1,151 @@
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16.4-bookworm}
+    pull_policy: never
+    environment:
+      POSTGRES_DB: compliance
+      POSTGRES_USER: compliance
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U compliance -d compliance"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: ${COMPLIANCE_IMAGE:?set COMPLIANCE_IMAGE}
+    pull_policy: never
+    command: ["python", "-m", "apps.control_api.migrate"]
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      COMPLIANCE_DATABASE_URL: ${COMPLIANCE_DATABASE_URL:?set COMPLIANCE_DATABASE_URL}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?set INTERNAL_TOKEN}
+      COMPLIANCE_ENVIRONMENT: production
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [backend]
+    restart: "no"
+
+  control-api:
+    image: ${COMPLIANCE_IMAGE:?set COMPLIANCE_IMAGE}
+    pull_policy: never
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      COMPLIANCE_DATABASE_URL: ${COMPLIANCE_DATABASE_URL:?set COMPLIANCE_DATABASE_URL}
+      COMPLIANCE_DB: ${COMPLIANCE_DATABASE_URL:?set COMPLIANCE_DATABASE_URL}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?set INTERNAL_TOKEN}
+      COMPLIANCE_ENVIRONMENT: production
+      COMPLIANCE_INPUT_ROOT: /inputs
+      COMPLIANCE_STORAGE_DIR: /data/artifacts
+      COMPLIANCE_SOURCE_CONFIG: /config/sources.json
+      OCR_ENDPOINT: ${OCR_ENDPOINT:-}
+      OCR_PROVIDER: ${OCR_PROVIDER:-http-json}
+      OCR_AUTHORIZATION: ${OCR_AUTHORIZATION:-}
+      VISION_ENDPOINT: ${VISION_ENDPOINT:-}
+      VISION_MODEL: ${VISION_MODEL:-}
+      VISION_AUTHORIZATION: ${VISION_AUTHORIZATION:-}
+      MAX_OCR_CONCURRENCY: ${MAX_OCR_CONCURRENCY:-2}
+      MAX_MODEL_CONCURRENCY: ${MAX_MODEL_CONCURRENCY:-2}
+      MAX_DOCUMENT_CONCURRENCY: ${MAX_DOCUMENT_CONCURRENCY:-4}
+      PROVIDER_MAX_ATTEMPTS: ${PROVIDER_MAX_ATTEMPTS:-2}
+      PI_MAX_TOTAL_PAGES: ${PI_MAX_TOTAL_PAGES:-5000}
+      COMPLIANCE_SCOPE_PROOF_KEY: ${COMPLIANCE_SCOPE_PROOF_KEY:-}
+      COMPLIANCE_EVIDENCE_REVIEW_KEY: ${COMPLIANCE_EVIDENCE_REVIEW_KEY:-}
+      COMPLIANCE_EVIDENCE_REVIEW_RECEIPTS: ${COMPLIANCE_EVIDENCE_REVIEW_RECEIPTS:-}
+      CALLBACK_ALLOWED_HOSTS: ${CALLBACK_ALLOWED_HOSTS:?set CALLBACK_ALLOWED_HOSTS}
+      CALLBACK_ALLOW_HTTP: ${CALLBACK_ALLOW_HTTP:-false}
+      CALLBACK_ALLOW_PRIVATE: ${CALLBACK_ALLOW_PRIVATE:-true}
+      COMPLIANCE_CALLBACK_AUTHORIZATION: ${COMPLIANCE_CALLBACK_AUTHORIZATION:-}
+    ports: ["127.0.0.1:${COMPLIANCE_PORT:-8092}:8092"]
+    volumes:
+      - app-data:/data
+      - ${COMPLIANCE_INPUT_DIR:-../../fixtures}:/inputs:ro
+      - ${COMPLIANCE_CONFIG_DIR:-../../config}:/config:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    networks: [backend, model-egress]
+    restart: unless-stopped
+
+  control-worker:
+    image: ${COMPLIANCE_IMAGE:?set COMPLIANCE_IMAGE}
+    pull_policy: never
+    command: ["python", "-m", "apps.control_api.worker"]
+    healthcheck:
+      disable: true
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      COMPLIANCE_DATABASE_URL: ${COMPLIANCE_DATABASE_URL:?set COMPLIANCE_DATABASE_URL}
+      COMPLIANCE_DB: ${COMPLIANCE_DATABASE_URL:?set COMPLIANCE_DATABASE_URL}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?set INTERNAL_TOKEN}
+      COMPLIANCE_ENVIRONMENT: production
+      COMPLIANCE_INPUT_ROOT: /inputs
+      COMPLIANCE_STORAGE_DIR: /data/artifacts
+      COMPLIANCE_SOURCE_CONFIG: /config/sources.json
+      PI_WORKER_URL: http://pi-worker:8093
+      PI_ENABLED: "true"
+      PI_MAX_TOOL_CALLS: ${PI_MAX_TOOL_CALLS:-80}
+      OCR_ENDPOINT: ${OCR_ENDPOINT:-}
+      OCR_PROVIDER: ${OCR_PROVIDER:-http-json}
+      OCR_AUTHORIZATION: ${OCR_AUTHORIZATION:-}
+      VISION_ENDPOINT: ${VISION_ENDPOINT:-}
+      VISION_MODEL: ${VISION_MODEL:-}
+      VISION_AUTHORIZATION: ${VISION_AUTHORIZATION:-}
+      MAX_OCR_CONCURRENCY: ${MAX_OCR_CONCURRENCY:-2}
+      MAX_MODEL_CONCURRENCY: ${MAX_MODEL_CONCURRENCY:-2}
+      MAX_DOCUMENT_CONCURRENCY: ${MAX_DOCUMENT_CONCURRENCY:-4}
+      PROVIDER_MAX_ATTEMPTS: ${PROVIDER_MAX_ATTEMPTS:-2}
+      PI_MAX_TOTAL_PAGES: ${PI_MAX_TOTAL_PAGES:-5000}
+      COMPLIANCE_SCOPE_PROOF_KEY: ${COMPLIANCE_SCOPE_PROOF_KEY:-}
+      COMPLIANCE_EVIDENCE_REVIEW_KEY: ${COMPLIANCE_EVIDENCE_REVIEW_KEY:-}
+      COMPLIANCE_EVIDENCE_REVIEW_RECEIPTS: ${COMPLIANCE_EVIDENCE_REVIEW_RECEIPTS:-}
+      CALLBACK_ALLOWED_HOSTS: ${CALLBACK_ALLOWED_HOSTS:?set CALLBACK_ALLOWED_HOSTS}
+      CALLBACK_ALLOW_HTTP: ${CALLBACK_ALLOW_HTTP:-false}
+      CALLBACK_ALLOW_PRIVATE: ${CALLBACK_ALLOW_PRIVATE:-true}
+      COMPLIANCE_CALLBACK_AUTHORIZATION: ${COMPLIANCE_CALLBACK_AUTHORIZATION:-}
+    volumes:
+      - app-data:/data
+      - ${COMPLIANCE_INPUT_DIR:-../../fixtures}:/inputs:ro
+      - ${COMPLIANCE_CONFIG_DIR:-../../config}:/config:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+      pi-worker: {condition: service_started}
+    networks: [backend, model-egress]
+    restart: unless-stopped
+
+  pi-worker:
+    image: ${PI_WORKER_IMAGE:?set PI_WORKER_IMAGE}
+    pull_policy: never
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?set INTERNAL_TOKEN}
+      EVIDENCE_API_URL: http://control-api:8092
+      PI_MODEL_BASE_URL: ${PI_MODEL_BASE_URL:?set PI_MODEL_BASE_URL}
+      PI_MODEL_ID: ${PI_MODEL_ID:?set PI_MODEL_ID}
+      PI_MODEL_API_KEY: ${PI_MODEL_API_KEY:-}
+      MAX_MODEL_CONCURRENCY: ${MAX_MODEL_CONCURRENCY:-2}
+      MAX_TOOL_CONCURRENCY: ${MAX_TOOL_CONCURRENCY:-4}
+      PI_DEADLINE_MS: ${PI_DEADLINE_MS:-1800000}
+      PI_MAX_TOOL_CALLS: ${PI_MAX_TOOL_CALLS:-80}
+    depends_on:
+      control-api: {condition: service_started}
+    networks: [backend, model-egress]
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  app-data:
+
+networks:
+  backend:
+    internal: true
+  model-egress:
+    driver: bridge

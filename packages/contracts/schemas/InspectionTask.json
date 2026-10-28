@@ -1,0 +1,87 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "mineId": {
+      "title": "Mineid",
+      "type": "string"
+    },
+    "checkCycle": {
+      "title": "Checkcycle",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "status": {
+      "default": "running",
+      "enum": [
+        "running",
+        "pause",
+        "resume"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "taskId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Taskid"
+    },
+    "executionId": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Executionid"
+    },
+    "resultCallbackUrl": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Resultcallbackurl"
+    },
+    "scope": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scope"
+    }
+  },
+  "required": [
+    "mineId",
+    "checkCycle",
+    "items"
+  ],
+  "title": "InspectionTask",
+  "type": "object"
+}

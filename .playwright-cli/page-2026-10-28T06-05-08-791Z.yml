@@ -1,0 +1,65 @@
+- generic [active] [ref=f1e1]:
+  - link "跳到工作区" [ref=f1e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f1e3]:
+    - complementary [ref=f1e4]:
+      - link "Compliance Pi 文件合规检查" [ref=f1e5] [cursor=pointer]:
+        - /url: "#runs"
+        - generic [aria-hidden] [ref=f1e6]: CP
+        - generic [ref=f1e7]:
+          - strong [ref=f1e8]: Compliance Pi
+          - generic [ref=f1e9]: 文件合规检查
+      - navigation "主导航" [ref=f1e10]:
+        - link "检查运行" [ref=f1e11] [cursor=pointer]:
+          - /url: "#runs"
+          - generic [aria-hidden] [ref=f1e12]: ▤
+          - text: 检查运行
+        - link "证据导航" [ref=f1e13] [cursor=pointer]:
+          - /url: "#evidence"
+          - generic [aria-hidden] [ref=f1e14]: ⌕
+          - text: 证据导航
+        - link "规则计划" [ref=f1e15] [cursor=pointer]:
+          - /url: "#rules"
+          - generic [aria-hidden] [ref=f1e16]: ▧
+          - text: 规则计划
+      - generic [ref=f1e17]:
+        - generic [ref=f1e18]: local / sqlite
+        - generic [ref=f1e21]: Pi 未启用 · 本地演示
+        - button "连接设置" [ref=f1e22] [cursor=pointer]
+    - main [ref=f1e23]:
+      - generic [ref=f1e24]:
+        - generic [ref=f1e25]:
+          - text: COMPLIANCE / EVIDENCE
+          - heading "规则计划" [level=1] [ref=f1e26]
+        - generic [ref=f1e27]:
+          - generic [ref=f1e28]: 服务在线
+          - button "刷新当前页面" [ref=f1e29] [cursor=pointer]: ↻
+      - region "规则计划" [ref=f1e30]:
+        - generic [ref=f1e32]:
+          - heading "检查需要什么证据" [level=2] [ref=f1e33]
+          - paragraph [ref=f1e34]: 展示当前规则预览；选择运行后展示冻结版本。
+        - generic [ref=f1e35]:
+          - generic [ref=f1e36]:
+            - generic [ref=f1e37]:
+              - heading "冲击危险停工撤人与卸压" [level=3] [ref=f1e39]
+              - generic [ref=f1e40]: 开发底稿
+            - generic [ref=f1e41]:
+              - heading "规则来源" [level=4] [ref=f1e42]
+              - heading "必要命题" [level=4] [ref=f1e43]
+              - heading "资料要求" [level=4] [ref=f1e44]
+          - complementary [ref=f1e45]:
+            - heading "判定边界" [level=3] [ref=f1e47]
+            - list [ref=f1e48]:
+              - listitem [ref=f1e49]:
+                - strong [ref=f1e50]: 候选须验证
+                - paragraph [ref=f1e51]: 模型提出字段，原文引用与语义分别核验。
+              - listitem [ref=f1e52]:
+                - strong [ref=f1e53]: 缺证保留缺口
+                - paragraph [ref=f1e54]: 未找到记录不能证明实际未执行。
+              - listitem [ref=f1e55]:
+                - strong [ref=f1e56]: 覆盖必须闭合
+                - paragraph [ref=f1e57]: 文件处理结束不代表资料范围完整。
+              - listitem [ref=f1e58]:
+                - strong [ref=f1e59]: 版本可回溯
+                - paragraph [ref=f1e60]: 新规则或补报资料通过新运行重判。
+      - generic [ref=f1e61]: Compliance Pi

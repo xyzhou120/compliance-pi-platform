@@ -1,0 +1,98 @@
+- generic [ref=f1e1]:
+  - link "跳到工作区" [ref=f1e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=f1e3]:
+    - complementary [ref=f1e4]:
+      - link "Compliance Pi 文件合规检查" [ref=f1e5] [cursor=pointer]:
+        - /url: "#runs"
+        - generic [aria-hidden] [ref=f1e6]: CP
+        - generic [ref=f1e7]:
+          - strong [ref=f1e8]: Compliance Pi
+          - generic [ref=f1e9]: 文件合规检查
+      - navigation "主导航" [ref=f1e10]:
+        - link "检查运行" [ref=f1e11] [cursor=pointer]:
+          - /url: "#runs"
+          - generic [aria-hidden] [ref=f1e12]: ▤
+          - text: 检查运行
+        - link "证据导航" [ref=f1e13] [cursor=pointer]:
+          - /url: "#evidence"
+          - generic [aria-hidden] [ref=f1e14]: ⌕
+          - text: 证据导航
+        - link "规则计划" [ref=f1e15] [cursor=pointer]:
+          - /url: "#rules"
+          - generic [aria-hidden] [ref=f1e16]: ▧
+          - text: 规则计划
+      - generic [ref=f1e17]:
+        - generic [ref=f1e18]: 正在连接服务
+        - generic [ref=f1e21]: 等待运行配置
+        - button "连接设置" [ref=f1e22] [cursor=pointer]:
+          - text: 连接设置
+          - generic [aria-hidden] [ref=f1e23]: ↗
+    - main [ref=f1e24]:
+      - generic [ref=f1e25]:
+        - generic [ref=f1e26]:
+          - text: COMPLIANCE / EVIDENCE
+          - heading "检查运行" [level=1] [ref=f1e27]
+        - generic [ref=f1e28]:
+          - generic [ref=f1e29]: 需要访问令牌
+          - button "刷新当前页面" [ref=f1e30] [cursor=pointer]: ↻
+      - region "检查运行" [ref=f1e31]:
+        - generic [ref=f1e32]:
+          - generic [ref=f1e33]:
+            - heading "每一次检查，都有据可查" [level=2] [ref=f1e34]
+            - paragraph [ref=f1e35]: 从任务到命题，再定位原始文件。执行完成与业务通过分别记录。
+          - button "＋ 新建检查" [ref=f1e36] [cursor=pointer]
+        - generic [ref=f1e37]:
+          - generic [ref=f1e38]:
+            - text: 矿井编码
+            - textbox "矿井编码" [ref=f1e39]:
+              - /placeholder: 全部已授权矿井
+          - generic [ref=f1e40]:
+            - text: 检查周期
+            - textbox "检查周期" [ref=f1e41]
+          - button "筛选" [ref=f1e42] [cursor=pointer]
+          - button "重置" [ref=f1e43] [cursor=pointer]
+        - region [ref=f1e44]:
+          - generic [ref=f1e45]:
+            - heading "运行记录 0" [level=2] [ref=f1e46]
+            - generic [ref=f1e47]: 首次加载
+          - table [ref=f1e49]:
+            - rowgroup [ref=f1e50]:
+              - row [ref=f1e51]:
+                - columnheader "矿井 / 检查项" [ref=f1e52]
+                - columnheader "检查周期" [ref=f1e53]
+                - columnheader "执行状态" [ref=f1e54]
+                - columnheader "核验结果" [ref=f1e55]
+                - columnheader "回写状态" [ref=f1e56]
+                - columnheader "受理时间" [ref=f1e57]
+                - columnheader "操作" [ref=f1e58]
+            - rowgroup [ref=f1e60]:
+              - row [ref=f1e61]:
+                - cell "正在加载运行记录…" [ref=f1e62]
+          - generic [ref=f1e63]:
+            - generic [ref=f1e64]: —
+            - generic [ref=f1e65]:
+              - button "上一页" [disabled] [ref=f1e66]
+              - button "下一页" [disabled] [ref=f1e67]
+      - generic [ref=f1e68]:
+        - text: Compliance Pi
+        - generic [ref=f1e69]: 规则资产 · 证据链 · 确定性核验
+  - dialog [ref=f1e70]:
+    - generic [ref=f1e71]:
+      - generic [ref=f1e72]:
+        - generic [ref=f1e73]:
+          - text: WORKSPACE CONNECTION
+          - heading "连接工作台" [level=2] [ref=f1e74]
+        - button "关闭连接设置" [active] [ref=f1e75] [cursor=pointer]: ×
+      - paragraph [ref=f1e76]: 输入上游任务访问令牌。页面通过同源接口读取授权矿井的任务与证据。
+      - generic [ref=f1e77]:
+        - text: 访问令牌
+        - textbox "访问令牌" [ref=f1e78]:
+          - /placeholder: X-Inspection-Token
+      - generic [ref=f1e79]:
+        - checkbox "仅在本次浏览器会话中保存" [ref=f1e80]
+        - text: 仅在本次浏览器会话中保存
+      - alert [ref=f1e81]
+      - generic [ref=f1e82]:
+        - button "使用本地演示令牌" [ref=f1e83] [cursor=pointer]
+        - button "连接" [ref=f1e84] [cursor=pointer]

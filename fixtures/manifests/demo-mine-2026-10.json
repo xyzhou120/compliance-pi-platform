@@ -1,0 +1,9 @@
+{
+  "mine_id": "demo-mine",
+  "environment": "local",
+  "source_complete": false,
+  "scope_proof": false,
+  "files": [
+    {"path":"demo/record.txt", "file_id":"demo-record", "role":"actual_record", "material_group":"dispatch_daily", "report_date":"2026-10-01"}
+  ]
+}

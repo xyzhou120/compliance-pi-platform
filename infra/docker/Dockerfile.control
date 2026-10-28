@@ -1,0 +1,24 @@
+ARG PYTHON_BASE=python:3.12.10-slim-bookworm
+FROM ${PYTHON_BASE} AS builder
+WORKDIR /build
+COPY pyproject.toml requirements.lock README.md ./
+COPY apps ./apps
+COPY packages ./packages
+COPY rule_assets ./rule_assets
+COPY frontend ./frontend
+RUN python -m pip wheel --constraint requirements.lock --wheel-dir /wheels '.[render,oceanbase]'
+
+FROM ${PYTHON_BASE} AS runtime
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+WORKDIR /app
+COPY --from=builder /wheels /wheels
+RUN python -m pip install --no-index --find-links=/wheels /wheels/*.whl && rm -rf /wheels
+COPY apps ./apps
+COPY packages ./packages
+COPY rule_assets ./rule_assets
+COPY frontend ./frontend
+RUN mkdir -p /data /inputs && chown 10001:10001 /data /inputs
+USER 10001:10001
+EXPOSE 8092
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8092/health', timeout=3)"
+CMD ["uvicorn", "apps.control_api.main:app", "--host", "0.0.0.0", "--port", "8092"]

@@ -1,0 +1,16 @@
+ARG NODE_BASE=node:22.20.0-bookworm-slim
+FROM ${NODE_BASE} AS builder
+WORKDIR /app
+COPY apps/pi-worker/package.json apps/pi-worker/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+COPY apps/pi-worker ./
+RUN node --check src/runtime.mjs && node --check src/server.mjs
+
+FROM ${NODE_BASE} AS runtime
+ENV NODE_ENV=production PI_HOST=0.0.0.0 PI_PORT=8093
+WORKDIR /app
+COPY --from=builder --chown=node:node /app /app
+USER node
+EXPOSE 8093
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD node -e "fetch('http://127.0.0.1:8093/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+CMD ["node", "src/server.mjs"]

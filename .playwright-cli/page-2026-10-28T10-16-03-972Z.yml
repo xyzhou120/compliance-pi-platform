@@ -1,0 +1,138 @@
+- generic [active] [ref=e1]:
+  - link "跳到工作区" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - link "Compliance Pi 文件合规检查" [ref=e5] [cursor=pointer]:
+        - /url: "#runs"
+        - generic [aria-hidden] [ref=e6]: CP
+        - generic [ref=e7]:
+          - strong [ref=e8]: Compliance Pi
+          - generic [ref=e9]: 文件合规检查
+      - navigation "主导航" [ref=e10]:
+        - link "检查运行" [ref=e11] [cursor=pointer]:
+          - /url: "#runs"
+          - generic [aria-hidden] [ref=e12]: ▤
+          - text: 检查运行
+        - link "证据导航" [ref=e13] [cursor=pointer]:
+          - /url: "#evidence"
+          - generic [aria-hidden] [ref=e14]: ⌕
+          - text: 证据导航
+        - link "规则计划" [ref=e15] [cursor=pointer]:
+          - /url: "#rules"
+          - generic [aria-hidden] [ref=e16]: ▧
+          - text: 规则计划
+      - generic [ref=e17]:
+        - generic [ref=e18]: local / sqlite
+        - generic [ref=e21]: Pi 取证已启用
+    - main [ref=e22]:
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - text: COMPLIANCE / EVIDENCE
+          - heading "规则计划" [level=1] [ref=e25]
+        - generic [ref=e26]:
+          - generic [ref=e27]: 服务在线
+          - button "刷新当前页面" [ref=e28] [cursor=pointer]: ↻
+      - region "规则计划" [ref=e29]:
+        - generic [ref=e30]:
+          - generic [ref=e31]:
+            - heading "检查需要什么证据" [level=2] [ref=e32]
+            - paragraph [ref=e33]: 当前规则预览
+          - group "规则版本" [ref=e34]:
+            - button "当前规则" [pressed] [ref=e35] [cursor=pointer]
+            - button "本轮冻结" [ref=e36] [cursor=pointer]
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - generic [ref=e39]:
+              - generic [ref=e40]:
+                - heading "冲击危险停工撤人与卸压" [level=3] [ref=e41]
+                - generic [ref=e42]: 计划版本 aacbeafeb2ecc28d855246b7e27cd2167421fca13c99b27cd021b67508e4fb13 · 规则资产 492d67749b5756c7f4f4641b46fe7e7b82277fb79d5420ebcabe515326ea9385
+              - generic [ref=e43]: 开发底稿
+            - generic [ref=e44]:
+              - heading "规则来源" [level=4] [ref=e45]
+              - generic [ref=e46]:
+                - term [ref=e47]: 规则来源
+                - definition [ref=e48]: 用户确认的三步核查描述与六类资料清单
+                - term [ref=e49]: 来源类型
+                - definition [ref=e50]: 用户确认规则
+                - term [ref=e51]: 历史溯源
+                - definition [ref=e52]: 冲击地压规则1023.xlsx · SHA256 e3fc04ca7346bb91…
+                - term [ref=e53]: 状态
+                - definition [ref=e54]: development-draft
+              - heading "必要命题" [level=4] [ref=e55]
+              - generic [ref=e56]:
+                - generic [ref=e57]:
+                  - strong [ref=e58]: 触发条件
+                  - generic [ref=e59]: 需要冻结证据或明确缺口
+                - generic [ref=e60]:
+                  - strong [ref=e61]: 危险研判
+                  - generic [ref=e62]: 需要冻结证据或明确缺口
+                - generic [ref=e63]:
+                  - strong [ref=e64]: 停止作业
+                  - generic [ref=e65]: 需要冻结证据或明确缺口
+                - generic [ref=e66]:
+                  - strong [ref=e67]: 切断电源
+                  - generic [ref=e68]: 需要冻结证据或明确缺口
+                - generic [ref=e69]:
+                  - strong [ref=e70]: 撤人
+                  - generic [ref=e71]: 需要冻结证据或明确缺口
+                - generic [ref=e72]:
+                  - strong [ref=e73]: 报告调度
+                  - generic [ref=e74]: 需要冻结证据或明确缺口
+              - heading "资料要求" [level=4] [ref=e75]
+              - table [ref=e77]:
+                - rowgroup [ref=e78]:
+                  - row [ref=e79]:
+                    - columnheader "资料组" [ref=e80]
+                    - columnheader "资料名称" [ref=e81]
+                    - columnheader "频率" [ref=e82]
+                    - columnheader "启用方式" [ref=e83]
+                - rowgroup [ref=e84]:
+                  - row [ref=e85]:
+                    - cell "防冲工作日报表" [ref=e86]
+                    - cell "防冲工作日报表" [ref=e87]
+                    - cell "日" [ref=e88]
+                    - cell "基础资料" [ref=e89]
+                  - row [ref=e90]:
+                    - cell "冲击危险性预警临界指标" [ref=e91]
+                    - cell "冲击危险性预警临界指标" [ref=e92]
+                    - cell "年" [ref=e93]
+                    - cell "按事件需要" [ref=e94]
+                  - row [ref=e95]:
+                    - cell "调度日报" [ref=e96]
+                    - cell "调度日报" [ref=e97]
+                    - cell "日" [ref=e98]
+                    - cell "危险研判确认后" [ref=e99]
+                  - row [ref=e100]:
+                    - cell "生产组织通知单" [ref=e101]
+                    - cell "生产组织通知单" [ref=e102]
+                    - cell "月" [ref=e103]
+                    - cell "按事件需要" [ref=e104]
+                  - row [ref=e105]:
+                    - cell "防冲钻孔验收记录" [ref=e106]
+                    - cell "防冲钻孔验收记录" [ref=e107]
+                    - cell "周" [ref=e108]
+                    - cell "危险研判确认后" [ref=e109]
+                  - row [ref=e110]:
+                    - cell "防冲设计" [ref=e111]
+                    - cell "防冲设计" [ref=e112]
+                    - cell "年" [ref=e113]
+                    - cell "危险研判确认后" [ref=e114]
+          - complementary [ref=e115]:
+            - heading "判定边界" [level=3] [ref=e117]
+            - list [ref=e118]:
+              - listitem [ref=e119]:
+                - strong [ref=e120]: 候选须验证
+                - paragraph [ref=e121]: 模型提出字段，原文引用与语义分别核验。
+              - listitem [ref=e122]:
+                - strong [ref=e123]: 缺证保留缺口
+                - paragraph [ref=e124]: 未找到记录不能证明实际未执行。
+              - listitem [ref=e125]:
+                - strong [ref=e126]: 覆盖必须闭合
+                - paragraph [ref=e127]: 文件处理结束不代表资料范围完整。
+              - listitem [ref=e128]:
+                - strong [ref=e129]: 版本可回溯
+                - paragraph [ref=e130]: 新规则或补报资料通过新运行重判。
+      - generic [ref=e131]:
+        - text: Compliance Pi
+        - generic [ref=e132]: 规则资产 · 证据链 · 确定性核验

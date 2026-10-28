@@ -1,0 +1,314 @@
+- generic [active] [ref=e1]:
+  - link "跳到工作区" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - link "Compliance Pi 文件合规检查" [ref=e5] [cursor=pointer]:
+        - /url: "#runs"
+        - generic [aria-hidden] [ref=e6]: CP
+        - generic [ref=e7]:
+          - strong [ref=e8]: Compliance Pi
+          - generic [ref=e9]: 文件合规检查
+      - navigation "主导航" [ref=e10]:
+        - link "检查运行" [ref=e11] [cursor=pointer]:
+          - /url: "#runs"
+          - generic [aria-hidden] [ref=e12]: ▤
+          - text: 检查运行
+        - link "证据导航" [ref=e13] [cursor=pointer]:
+          - /url: "#evidence"
+          - generic [aria-hidden] [ref=e14]: ⌕
+          - text: 证据导航
+        - link "规则计划" [ref=e15] [cursor=pointer]:
+          - /url: "#rules"
+          - generic [aria-hidden] [ref=e16]: ▧
+          - text: 规则计划
+      - generic [ref=e17]:
+        - generic [ref=e18]: local / sqlite
+        - generic [ref=e21]: Pi 未启用 · 本地演示
+    - main [ref=e22]:
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - text: COMPLIANCE / EVIDENCE
+          - heading "检查运行" [level=1] [ref=e25]
+        - generic [ref=e26]:
+          - generic [ref=e27]: 服务在线
+          - button "刷新当前页面" [ref=e28] [cursor=pointer]: ↻
+      - region "检查运行" [ref=e29]:
+        - generic [ref=e30]:
+          - generic [ref=e31]:
+            - heading "每一次检查，都有据可查" [level=2] [ref=e32]
+            - paragraph [ref=e33]: 从任务到命题，再定位原始文件。执行完成与业务通过分别记录。
+          - button "＋ 新建检查" [ref=e34] [cursor=pointer]
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - text: 矿井编码
+            - textbox "矿井编码" [ref=e37]:
+              - /placeholder: 全部已授权矿井
+          - generic [ref=e38]:
+            - text: 检查周期
+            - textbox "检查周期" [ref=e39]
+          - button "筛选" [ref=e40] [cursor=pointer]
+          - button "重置" [ref=e41] [cursor=pointer]
+        - region [ref=e42]:
+          - generic [ref=e43]:
+            - heading "运行记录 27" [level=2] [ref=e44]
+            - generic [ref=e45]: 更新于 16:33:15
+          - table [ref=e47]:
+            - rowgroup [ref=e48]:
+              - row [ref=e49]:
+                - columnheader "矿井 / 检查项" [ref=e50]
+                - columnheader "检查周期" [ref=e51]
+                - columnheader "执行状态" [ref=e52]
+                - columnheader "核验结果" [ref=e53]
+                - columnheader "回写状态" [ref=e54]
+                - columnheader "受理时间" [ref=e55]
+                - columnheader "操作" [ref=e56]
+            - rowgroup [ref=e58]:
+              - row [ref=e59]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-02f05c98809f12aba764d08675074ddb108d8220" [ref=e60]:
+                  - generic [ref=e61]:
+                    - text: demo-mine
+                    - generic [ref=e62]: 冲击危险停工撤人与卸压 · task-02f05c98809f12aba764d08675074ddb108d8220
+                - cell "2026-10" [ref=e63]
+                - cell "已暂停" [ref=e64]
+                - cell "—" [ref=e66]
+                - cell "无需回写" [ref=e68]
+                - cell "2026/10/28 14:39:36" [ref=e70]
+                - cell [ref=e71]:
+                  - button "查看 →" [ref=e72] [cursor=pointer]
+              - row [ref=e73]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-6aa94c034cf64bf52162774fff03d8b7d6b09e8c" [ref=e74]:
+                  - generic [ref=e75]:
+                    - text: demo-mine
+                    - generic [ref=e76]: 冲击危险停工撤人与卸压 · task-6aa94c034cf64bf52162774fff03d8b7d6b09e8c
+                - cell "2026-10" [ref=e77]
+                - cell "排队中" [ref=e78]
+                - cell "—" [ref=e80]
+                - cell "无需回写" [ref=e82]
+                - cell "2026/10/28 14:10:07" [ref=e84]
+                - cell [ref=e85]:
+                  - button "查看 →" [ref=e86] [cursor=pointer]
+              - row [ref=e87]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-7ca2593d17047f392435a52bf1237ee471252d9d" [ref=e88]:
+                  - generic [ref=e89]:
+                    - text: demo-mine
+                    - generic [ref=e90]: 冲击危险停工撤人与卸压 · task-7ca2593d17047f392435a52bf1237ee471252d9d
+                - cell "2026-10" [ref=e91]
+                - cell "已完成" [ref=e92]
+                - cell "无法核验" [ref=e94]
+                - cell "无需回写" [ref=e96]
+                - cell "2026/10/28 14:01:24" [ref=e98]
+                - cell [ref=e99]:
+                  - button "查看 →" [ref=e100] [cursor=pointer]
+              - row [ref=e101]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-5007548d2c1fbb9d10f66461daee36358e3fa5d8" [ref=e102]:
+                  - generic [ref=e103]:
+                    - text: demo-mine
+                    - generic [ref=e104]: 冲击危险停工撤人与卸压 · task-5007548d2c1fbb9d10f66461daee36358e3fa5d8
+                - cell "2026-10" [ref=e105]
+                - cell "排队中" [ref=e106]
+                - cell "—" [ref=e108]
+                - cell "无需回写" [ref=e110]
+                - cell "2026/10/28 14:01:24" [ref=e112]
+                - cell [ref=e113]:
+                  - button "查看 →" [ref=e114] [cursor=pointer]
+              - row [ref=e115]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-479e191608d2e88359114ac15ee9293fbf1e7d4a" [ref=e116]:
+                  - generic [ref=e117]:
+                    - text: demo-mine
+                    - generic [ref=e118]: 冲击危险停工撤人与卸压 · task-479e191608d2e88359114ac15ee9293fbf1e7d4a
+                - cell "2026-10" [ref=e119]
+                - cell "排队中" [ref=e120]
+                - cell "—" [ref=e122]
+                - cell "无需回写" [ref=e124]
+                - cell "2026/10/28 14:01:24" [ref=e126]
+                - cell [ref=e127]:
+                  - button "查看 →" [ref=e128] [cursor=pointer]
+              - row [ref=e129]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-4c1fcbd357ea0f29b33e9c97806c03433501f0b4" [ref=e130]:
+                  - generic [ref=e131]:
+                    - text: demo-mine
+                    - generic [ref=e132]: 冲击危险停工撤人与卸压 · task-4c1fcbd357ea0f29b33e9c97806c03433501f0b4
+                - cell "2026-10" [ref=e133]
+                - cell "排队中" [ref=e134]
+                - cell "—" [ref=e136]
+                - cell "无需回写" [ref=e138]
+                - cell "2026/10/28 14:01:24" [ref=e140]
+                - cell [ref=e141]:
+                  - button "查看 →" [ref=e142] [cursor=pointer]
+              - row [ref=e143]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-00e3273d7568d49663fe9cd77bc8c8ab1a5c39f3" [ref=e144]:
+                  - generic [ref=e145]:
+                    - text: demo-mine
+                    - generic [ref=e146]: 冲击危险停工撤人与卸压 · task-00e3273d7568d49663fe9cd77bc8c8ab1a5c39f3
+                - cell "2026-10" [ref=e147]
+                - cell "排队中" [ref=e148]
+                - cell "—" [ref=e150]
+                - cell "无需回写" [ref=e152]
+                - cell "2026/10/28 14:01:24" [ref=e154]
+                - cell [ref=e155]:
+                  - button "查看 →" [ref=e156] [cursor=pointer]
+              - row [ref=e157]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-48e82d1d8ec591e4a4442ce2e492a946d7a7c1b1" [ref=e158]:
+                  - generic [ref=e159]:
+                    - text: demo-mine
+                    - generic [ref=e160]: 冲击危险停工撤人与卸压 · task-48e82d1d8ec591e4a4442ce2e492a946d7a7c1b1
+                - cell "2026-10" [ref=e161]
+                - cell "排队中" [ref=e162]
+                - cell "—" [ref=e164]
+                - cell "无需回写" [ref=e166]
+                - cell "2026/10/28 14:01:24" [ref=e168]
+                - cell [ref=e169]:
+                  - button "查看 →" [ref=e170] [cursor=pointer]
+              - row [ref=e171]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-a14eb025bbdbd21e2265e3799e3f03fc861f41ed" [ref=e172]:
+                  - generic [ref=e173]:
+                    - text: demo-mine
+                    - generic [ref=e174]: 冲击危险停工撤人与卸压 · task-a14eb025bbdbd21e2265e3799e3f03fc861f41ed
+                - cell "2026-10" [ref=e175]
+                - cell "排队中" [ref=e176]
+                - cell "—" [ref=e178]
+                - cell "无需回写" [ref=e180]
+                - cell "2026/10/28 14:01:24" [ref=e182]
+                - cell [ref=e183]:
+                  - button "查看 →" [ref=e184] [cursor=pointer]
+              - row [ref=e185]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-775f0fb2db0700498671d0347ada3bd988c9deaf" [ref=e186]:
+                  - generic [ref=e187]:
+                    - text: demo-mine
+                    - generic [ref=e188]: 冲击危险停工撤人与卸压 · task-775f0fb2db0700498671d0347ada3bd988c9deaf
+                - cell "2026-10" [ref=e189]
+                - cell "排队中" [ref=e190]
+                - cell "—" [ref=e192]
+                - cell "无需回写" [ref=e194]
+                - cell "2026/10/28 14:01:24" [ref=e196]
+                - cell [ref=e197]:
+                  - button "查看 →" [ref=e198] [cursor=pointer]
+              - row [ref=e199]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-2954c96e96faa04ff387f029545eb0dc9d1e319d" [ref=e200]:
+                  - generic [ref=e201]:
+                    - text: demo-mine
+                    - generic [ref=e202]: 冲击危险停工撤人与卸压 · task-2954c96e96faa04ff387f029545eb0dc9d1e319d
+                - cell "2026-10" [ref=e203]
+                - cell "排队中" [ref=e204]
+                - cell "—" [ref=e206]
+                - cell "无需回写" [ref=e208]
+                - cell "2026/10/28 14:01:23" [ref=e210]
+                - cell [ref=e211]:
+                  - button "查看 →" [ref=e212] [cursor=pointer]
+              - row [ref=e213]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-23497d9a23278164626ab320d95e7d34db4f6f91" [ref=e214]:
+                  - generic [ref=e215]:
+                    - text: demo-mine
+                    - generic [ref=e216]: 冲击危险停工撤人与卸压 · task-23497d9a23278164626ab320d95e7d34db4f6f91
+                - cell "2026-10" [ref=e217]
+                - cell "排队中" [ref=e218]
+                - cell "—" [ref=e220]
+                - cell "无需回写" [ref=e222]
+                - cell "2026/10/28 14:01:23" [ref=e224]
+                - cell [ref=e225]:
+                  - button "查看 →" [ref=e226] [cursor=pointer]
+              - row [ref=e227]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-9e5a56a3de5e7dce6388f053f9c6f9dd19e684b5" [ref=e228]:
+                  - generic [ref=e229]:
+                    - text: demo-mine
+                    - generic [ref=e230]: 冲击危险停工撤人与卸压 · task-9e5a56a3de5e7dce6388f053f9c6f9dd19e684b5
+                - cell "2026-10" [ref=e231]
+                - cell "排队中" [ref=e232]
+                - cell "—" [ref=e234]
+                - cell "无需回写" [ref=e236]
+                - cell "2026/10/28 14:01:23" [ref=e238]
+                - cell [ref=e239]:
+                  - button "查看 →" [ref=e240] [cursor=pointer]
+              - row [ref=e241]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-9e0fdc7eb5408526a762f813ca9a2a1edf2a2d30" [ref=e242]:
+                  - generic [ref=e243]:
+                    - text: demo-mine
+                    - generic [ref=e244]: 冲击危险停工撤人与卸压 · task-9e0fdc7eb5408526a762f813ca9a2a1edf2a2d30
+                - cell "2026-10" [ref=e245]
+                - cell "排队中" [ref=e246]
+                - cell "—" [ref=e248]
+                - cell "无需回写" [ref=e250]
+                - cell "2026/10/28 14:01:23" [ref=e252]
+                - cell [ref=e253]:
+                  - button "查看 →" [ref=e254] [cursor=pointer]
+              - row [ref=e255]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-cd1ead1e5ea066695477247814ea7e05f8ec9e39" [ref=e256]:
+                  - generic [ref=e257]:
+                    - text: demo-mine
+                    - generic [ref=e258]: 冲击危险停工撤人与卸压 · task-cd1ead1e5ea066695477247814ea7e05f8ec9e39
+                - cell "2026-10" [ref=e259]
+                - cell "排队中" [ref=e260]
+                - cell "—" [ref=e262]
+                - cell "无需回写" [ref=e264]
+                - cell "2026/10/28 14:01:23" [ref=e266]
+                - cell [ref=e267]:
+                  - button "查看 →" [ref=e268] [cursor=pointer]
+              - row [ref=e269]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-7eef4ace7903a99c3a309493d6975bf1e0497ae8" [ref=e270]:
+                  - generic [ref=e271]:
+                    - text: demo-mine
+                    - generic [ref=e272]: 冲击危险停工撤人与卸压 · task-7eef4ace7903a99c3a309493d6975bf1e0497ae8
+                - cell "2026-10" [ref=e273]
+                - cell "排队中" [ref=e274]
+                - cell "—" [ref=e276]
+                - cell "无需回写" [ref=e278]
+                - cell "2026/10/28 14:01:23" [ref=e280]
+                - cell [ref=e281]:
+                  - button "查看 →" [ref=e282] [cursor=pointer]
+              - row [ref=e283]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-c5721c058bd54be80ecc48e30d2bb1f5c52bba9e" [ref=e284]:
+                  - generic [ref=e285]:
+                    - text: demo-mine
+                    - generic [ref=e286]: 冲击危险停工撤人与卸压 · task-c5721c058bd54be80ecc48e30d2bb1f5c52bba9e
+                - cell "2026-10" [ref=e287]
+                - cell "排队中" [ref=e288]
+                - cell "—" [ref=e290]
+                - cell "无需回写" [ref=e292]
+                - cell "2026/10/28 14:01:23" [ref=e294]
+                - cell [ref=e295]:
+                  - button "查看 →" [ref=e296] [cursor=pointer]
+              - row [ref=e297]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-ac6edd34cff457510e013d577b4a07cfce903c24" [ref=e298]:
+                  - generic [ref=e299]:
+                    - text: demo-mine
+                    - generic [ref=e300]: 冲击危险停工撤人与卸压 · task-ac6edd34cff457510e013d577b4a07cfce903c24
+                - cell "2026-10" [ref=e301]
+                - cell "排队中" [ref=e302]
+                - cell "—" [ref=e304]
+                - cell "无需回写" [ref=e306]
+                - cell "2026/10/28 14:01:23" [ref=e308]
+                - cell [ref=e309]:
+                  - button "查看 →" [ref=e310] [cursor=pointer]
+              - row [ref=e311]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-e33307d1b3e08eb0f8cfa86d4c072c89d56ee7bb" [ref=e312]:
+                  - generic [ref=e313]:
+                    - text: demo-mine
+                    - generic [ref=e314]: 冲击危险停工撤人与卸压 · task-e33307d1b3e08eb0f8cfa86d4c072c89d56ee7bb
+                - cell "2026-10" [ref=e315]
+                - cell "排队中" [ref=e316]
+                - cell "—" [ref=e318]
+                - cell "无需回写" [ref=e320]
+                - cell "2026/10/28 14:01:23" [ref=e322]
+                - cell [ref=e323]:
+                  - button "查看 →" [ref=e324] [cursor=pointer]
+              - row [ref=e325]:
+                - cell "demo-mine 冲击危险停工撤人与卸压 · task-e06a56bf5f2389cc96af0e9d142b5a41ce0085a1" [ref=e326]:
+                  - generic [ref=e327]:
+                    - text: demo-mine
+                    - generic [ref=e328]: 冲击危险停工撤人与卸压 · task-e06a56bf5f2389cc96af0e9d142b5a41ce0085a1
+                - cell "2026-10" [ref=e329]
+                - cell "排队中" [ref=e330]
+                - cell "—" [ref=e332]
+                - cell "无需回写" [ref=e334]
+                - cell "2026/10/28 14:01:23" [ref=e336]
+                - cell [ref=e337]:
+                  - button "查看 →" [ref=e338] [cursor=pointer]
+          - generic [ref=e339]:
+            - generic [ref=e340]: 1–20 / 27
+            - generic [ref=e341]:
+              - button "上一页" [disabled] [ref=e342]
+              - button "下一页" [ref=e343] [cursor=pointer]
+      - generic [ref=e344]:
+        - text: Compliance Pi
+        - generic [ref=e345]: 规则资产 · 证据链 · 确定性核验

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "compliance-pi-platform"
+version = "0.1.0"
+description = "Pi-based evidence-bound cross-document compliance platform"
+requires-python = ">=3.12"
+dependencies = ["fastapi==0.162.0", "uvicorn==0.54.0", "pydantic==2.12.5", "SQLAlchemy==2.1.6", "psycopg[binary]==3.3.6", "pypdf==5.4.0", "python-docx==1.1.2", "openpyxl==3.1.5"]
+
+[project.optional-dependencies]
+test = ["httpx==0.28.1"]
+render = ["pypdfium2==5.14.0", "Pillow==11.2.1"]
+oceanbase = ["PyMySQL==1.1.1"]
+
+[tool.setuptools.package-data]
+"apps.control_api.domain" = ["data/*.json"]
+"rule_assets" = ["*.json"]
+"packages.contracts" = ["schemas/*.json"]
+"frontend" = ["*.html", "*.css", "*.js"]
+
+[tool.setuptools.packages.find]
+include = ["apps*", "packages*", "rule_assets*", "frontend*"]

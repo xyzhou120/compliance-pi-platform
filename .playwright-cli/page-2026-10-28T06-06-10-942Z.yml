@@ -1,0 +1,88 @@
+- generic [ref=e1]:
+  - link "跳到工作区" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - link "Compliance Pi 文件合规检查" [ref=e5] [cursor=pointer]:
+        - /url: "#runs"
+        - generic [aria-hidden] [ref=e6]: CP
+        - generic [ref=e7]:
+          - strong [ref=e8]: Compliance Pi
+          - generic [ref=e9]: 文件合规检查
+      - navigation "主导航" [ref=e10]:
+        - link "检查运行" [ref=e11] [cursor=pointer]:
+          - /url: "#runs"
+          - generic [aria-hidden] [ref=e12]: ▤
+          - text: 检查运行
+        - link "证据导航" [ref=e13] [cursor=pointer]:
+          - /url: "#evidence"
+          - generic [aria-hidden] [ref=e14]: ⌕
+          - text: 证据导航
+        - link "规则计划" [ref=e15] [cursor=pointer]:
+          - /url: "#rules"
+          - generic [aria-hidden] [ref=e16]: ▧
+          - text: 规则计划
+      - generic [ref=e17]:
+        - generic [ref=e18]: 正在连接服务
+        - generic [ref=e21]: 等待运行配置
+        - button "连接设置" [ref=e22] [cursor=pointer]:
+          - text: 连接设置
+          - generic [aria-hidden] [ref=e23]: ↗
+    - main [ref=e24]:
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - text: COMPLIANCE / EVIDENCE
+          - heading "规则计划" [level=1] [ref=e27]
+        - generic [ref=e28]:
+          - generic [ref=e29]: 需要访问令牌
+          - button "刷新当前页面" [ref=e30] [cursor=pointer]: ↻
+      - region "规则计划" [ref=e31]:
+        - generic [ref=e33]:
+          - heading "检查需要什么证据" [level=2] [ref=e34]
+          - paragraph [ref=e35]: 展示当前规则预览；选择运行后展示冻结版本。
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]:
+              - heading "冲击危险停工撤人与卸压" [level=3] [ref=e40]
+              - generic [ref=e41]: 开发底稿
+            - generic [ref=e42]:
+              - heading "规则来源" [level=4] [ref=e43]
+              - heading "必要命题" [level=4] [ref=e44]
+              - heading "资料要求" [level=4] [ref=e45]
+          - complementary [ref=e46]:
+            - heading "判定边界" [level=3] [ref=e48]
+            - list [ref=e49]:
+              - listitem [ref=e50]:
+                - strong [ref=e51]: 候选须验证
+                - paragraph [ref=e52]: 模型提出字段，原文引用与语义分别核验。
+              - listitem [ref=e53]:
+                - strong [ref=e54]: 缺证保留缺口
+                - paragraph [ref=e55]: 未找到记录不能证明实际未执行。
+              - listitem [ref=e56]:
+                - strong [ref=e57]: 覆盖必须闭合
+                - paragraph [ref=e58]: 文件处理结束不代表资料范围完整。
+              - listitem [ref=e59]:
+                - strong [ref=e60]: 版本可回溯
+                - paragraph [ref=e61]: 新规则或补报资料通过新运行重判。
+      - generic [ref=e62]:
+        - text: Compliance Pi
+        - generic [ref=e63]: 规则资产 · 证据链 · 确定性核验
+  - dialog [ref=e64]:
+    - generic [ref=e65]:
+      - generic [ref=e66]:
+        - generic [ref=e67]:
+          - text: WORKSPACE CONNECTION
+          - heading "连接工作台" [level=2] [ref=e68]
+        - button "关闭连接设置" [active] [ref=e69] [cursor=pointer]: ×
+      - paragraph [ref=e70]: 输入上游任务访问令牌。页面通过同源接口读取授权矿井的任务与证据。
+      - generic [ref=e71]:
+        - text: 访问令牌
+        - textbox "访问令牌" [ref=e72]:
+          - /placeholder: X-Inspection-Token
+      - generic [ref=e73]:
+        - checkbox "仅在本次浏览器会话中保存" [ref=e74]
+        - text: 仅在本次浏览器会话中保存
+      - alert [ref=e75]
+      - generic [ref=e76]:
+        - button "使用本地演示令牌" [ref=e77] [cursor=pointer]
+        - button "连接" [ref=e78] [cursor=pointer]

@@ -1,0 +1,38 @@
+{
+  "mode": "oceanbase",
+  "manifests": {
+    "demo-mine": {
+      "2026-10": "manifests/demo-mine-2026-10.json"
+    }
+  },
+  "oceanbase": {
+    "mode": "oceanbase",
+    "table": "mine_remote_disaster_file",
+    "compatibility_mode": "mysql",
+    "driver_module": "pymysql",
+    "env": {
+      "host": "COMPLIANCE_OB_HOST",
+      "port": "COMPLIANCE_OB_PORT",
+      "database": "COMPLIANCE_OB_DATABASE",
+      "user": "COMPLIANCE_OB_USER",
+      "password": "COMPLIANCE_OB_PASSWORD"
+    }
+  },
+  "attachment_base_url": "https://172.26.10.67:8082/",
+  "attachment_allowed_hosts": ["172.26.10.67"],
+  "attachment_tls_verify": false,
+  "max_attachment_bytes": 52428800,
+  "allow_http": false,
+  "allow_private": true,
+  "allow_loopback": false,
+  "catalog": {
+    "stop_work_unload": [
+      {"file_name_id": "rock_ledger_1k8hqc4_rpt_wh5nwe", "material_group": "prevention_daily", "source_role": "actual_record", "cadence":"daily", "display_name":"防冲工作日报表"},
+      {"file_name_id": "rock_rpt_181s4w6_x_jqiyc1", "material_group": "threshold", "source_role": "requirement", "cadence":"annual", "display_name":"冲击危险性预警临界指标"},
+      {"file_name_id": "base_base_ledger_1falhnq_x_smfptn", "material_group": "dispatch_daily", "source_role": "actual_record", "cadence":"daily", "display_name":"调度日报"},
+      {"file_name_id": "rock_ledger_1k8hqc4_x_1t0mx6a", "material_group": "release", "source_role": "actual_record", "cadence":"monthly", "display_name":"生产组织通知单", "instruction_layer": true},
+      {"file_name_id": "rock_ledger_1k8hqc4_rec_axez36", "material_group": "relief_acceptance", "source_role": "actual_record", "cadence":"weekly", "display_name":"防冲钻孔验收记录"},
+      {"file_name_id": "rock_x_iverp1_x_1t8xner", "material_group": "design", "source_role": "requirement", "cadence":"annual", "display_name":"防冲设计"}
+    ]
+  }
+}

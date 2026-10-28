@@ -1,0 +1,65 @@
+{
+  "$defs": {
+    "ResultStatus": {
+      "enum": [
+        "pass",
+        "no_pass",
+        "pending",
+        "unverifiable",
+        "failed"
+      ],
+      "title": "ResultStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "item_code": {
+      "title": "Item Code",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/ResultStatus"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "detail": {
+      "title": "Detail",
+      "type": "string"
+    },
+    "evidence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "coverage_gaps": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Coverage Gaps",
+      "type": "array"
+    },
+    "finalized_at": {
+      "format": "date-time",
+      "title": "Finalized At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "item_code",
+    "status",
+    "description",
+    "detail"
+  ],
+  "title": "RunResult",
+  "type": "object"
+}

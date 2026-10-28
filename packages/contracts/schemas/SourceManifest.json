@@ -1,0 +1,55 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "manifest_hash": {
+      "title": "Manifest Hash",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "mine_id": {
+      "title": "Mine Id",
+      "type": "string"
+    },
+    "check_cycle": {
+      "title": "Check Cycle",
+      "type": "string"
+    },
+    "rule_revision": {
+      "title": "Rule Revision",
+      "type": "string"
+    },
+    "files": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Files",
+      "type": "array"
+    },
+    "coverage": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Coverage",
+      "type": "array"
+    },
+    "source_complete": {
+      "default": false,
+      "title": "Source Complete",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "manifest_hash",
+    "run_id",
+    "mine_id",
+    "check_cycle",
+    "rule_revision"
+  ],
+  "title": "SourceManifest",
+  "type": "object"
+}

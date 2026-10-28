@@ -1,0 +1,16 @@
+{
+  "score": 92,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": [],
+  "suggestions": [],
+  "reasoning": "Desktop 1440 and mobile 390 preserve the existing Operate brief. Frozen revision IDs wrap and primary sections remain readable without page overflow. This is visual QA against the product brief, not image fidelity scoring or accessibility certification.",
+  "threshold": 90,
+  "threshold_passed": true,
+  "next_actions": ["Validate real business documents and physical mobile usage before production acceptance"],
+  "initial_verdict": {"score": 82, "verdict": "revise", "differences": ["At 390px, the long revision header overflowed to 513px"], "suggestions": ["Allow shrinking header children, wrapping identifiers and wrapping mobile header actions"]},
+  "reference": ["PRODUCT.md", "DESIGN.md"],
+  "screenshots": [".local/verification/desktop-runs.png", ".local/verification/desktop-evidence.png", ".local/verification/mobile-rules.png", ".local/verification/mobile-evidence.png"],
+  "runtime_mode": "none",
+  "verified_date": "2026-10-28"
+}

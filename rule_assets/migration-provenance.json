@@ -1,0 +1,83 @@
+{
+  "source_project": "compliance-service",
+  "source_snapshot_date": "2026-10-28",
+  "items": [
+    {
+      "source": "tests/test_rules.py",
+      "target": "tests/test_domain_rules.py",
+      "source_sha256": "e972552a41c310e0a368e6fe8546f4d929219c6ea0a389d8dbc0bbf4ce635b5a",
+      "change": "Import paths only",
+      "target_sha256": "378f0939de1bc39d7b65a12436134c08646bc237d43deb71dae2b55c649a4207"
+    },
+    {
+      "source": "tests/test_association.py",
+      "target": "tests/test_domain_association.py",
+      "source_sha256": "8928751efa7b2dd4cdd39f02787178313b1498d068f2ebd7b6d029fa792d5b61",
+      "change": "Import paths only",
+      "target_sha256": "82bdb26328d50523bf3e81911f044a713712cceb89e5242dca7fe7b53a898753"
+    },
+    {
+      "source": "tests/test_fact_extraction.py",
+      "target": "tests/test_domain_extraction.py",
+      "source_sha256": "2cb9cefd8421d8fc783ed2c112b81ecebe1861d0fa061d6d882ff9d631c2b4ec",
+      "change": "Import paths only",
+      "target_sha256": "6a381e488332eed65ebc6098a7071a68ea00e89ce95c6a617e5eeb305182ec30"
+    },
+    {
+      "source": "tests/test_scope_checks.py",
+      "target": "tests/test_domain_scope.py",
+      "source_sha256": "f6831f6f9ccd06218f09dbfdc81e456831ca91ed9c45a5854788aeda8b5dc350",
+      "change": "Import paths only",
+      "target_sha256": "d85b521273da733e29c4d38d830d126f69f6a6292c7de8ace3934ede52ccf9e4"
+    },
+    {
+      "source": "compliance_service/rules.py",
+      "target": "apps/control_api/domain/rules.py",
+      "source_sha256": "a17f9303a2007403fc044d3d0c774a6f5bc1b142a3a3334cb63460234dee5098",
+      "target_sha256": "6fd764294c60a5d4a2f8dc9f97f549d9f76bf57909b407e8e12cfc76985e8010",
+      "change": "Frozen domain operators; LF normalized for Linux deployment"
+    },
+    {
+      "source": "compliance_service/scope_checks.py",
+      "target": "apps/control_api/domain/scope_checks.py",
+      "source_sha256": "4447a403768548130bd65188f87948722d4cead527f560a71a33d3cbfb68ede3",
+      "target_sha256": "585bab0f70bce0b17dd4994e1f98fc13ca952513b02a15cedd54a2cd249b6b79",
+      "change": "Frozen domain operators; LF normalized for Linux deployment"
+    },
+    {
+      "source": "compliance_service/association.py",
+      "target": "apps/control_api/domain/association.py",
+      "source_sha256": "4a982525d9e61e746d240c7bef8572634ce83c72a37ceead574f8d3a3369b5b4",
+      "target_sha256": "6276f09cea09b6b30237067a2e309847e3a326c9b1c650237c69c76aec3ee7fa",
+      "change": "Frozen domain operators; LF normalized for Linux deployment"
+    },
+    {
+      "source": "compliance_service/fact_extraction.py",
+      "target": "apps/control_api/domain/fact_extraction.py",
+      "source_sha256": "10d8b5ba848ae7a6d81c90d8bbd185e9afc8137994ee024c0f560fd19dde7f4a",
+      "target_sha256": "aa229ed4b4a49e0bebf1601d935f8ef7420f3897f2db714104492a016d23fc30",
+      "change": "Frozen domain operators; LF normalized for Linux deployment"
+    },
+    {
+      "source": "compliance_service/grades.py",
+      "target": "apps/control_api/domain/grades.py",
+      "source_sha256": "d36a2566a17aa8117a5db05ec8937af7ccb83b9d3d1d1bf7b3dcb11426b66f9a",
+      "target_sha256": "f966e39a27f08a58549535ee1a19960a5e8fbd03b7307a4c00e071ef7a26289c",
+      "change": "Frozen domain operators; LF normalized for Linux deployment"
+    },
+    {
+      "source": "compliance_service/units.py",
+      "target": "apps/control_api/domain/units.py",
+      "source_sha256": "fd53d602f189bdbc0cb7151549bd9a4daa31fcabab31b3c71d2d59b5c9898810",
+      "target_sha256": "602dbe12c640d1b57543c18d01f17c24d4a48f4f7312e7cc82bba8589c6b6ede",
+      "change": "Frozen domain operators; LF normalized for Linux deployment"
+    },
+    {
+      "source": "compliance_service/rulebook.py",
+      "target": "apps/control_api/domain/rulebook.py",
+      "source_sha256": "58a4e027f67cab0d07a9feb9d6ca65eb1124b60c8bd27765303d883d1e530468",
+      "target_sha256": "62b6e43ccc4bcf48fe5f8fac09cf4f2e0310debe3acec0d7a8d1a70c20bda2b9",
+      "change": "Rulebook resource loader uses independent package data"
+    }
+  ]
+}

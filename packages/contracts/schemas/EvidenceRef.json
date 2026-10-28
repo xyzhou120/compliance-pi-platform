@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "evidence_id": {
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "document_id": {
+      "title": "Document Id",
+      "type": "string"
+    },
+    "document_version": {
+      "title": "Document Version",
+      "type": "string"
+    },
+    "content_hash": {
+      "title": "Content Hash",
+      "type": "string"
+    },
+    "locator": {
+      "additionalProperties": true,
+      "title": "Locator",
+      "type": "object"
+    },
+    "quote": {
+      "default": "",
+      "title": "Quote",
+      "type": "string"
+    },
+    "source_role": {
+      "title": "Source Role",
+      "type": "string"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "document_id",
+    "document_version",
+    "content_hash",
+    "locator",
+    "source_role"
+  ],
+  "title": "EvidenceRef",
+  "type": "object"
+}

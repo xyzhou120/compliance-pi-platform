@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.local/
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+!.env.local.example
+*.sqlite3
+*.log
+*.tmp
+*.egg-info/
+release-*/
