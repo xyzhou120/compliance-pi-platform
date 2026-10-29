@@ -62,6 +62,60 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(result["status"], "pending")
         self.assertIn("pi_worker_failed:TimeoutError", result["coverage_gaps"])
 
+    def test_host_sweep_preserves_document_evidence_when_pi_fails(self):
+        def fail(*_):
+            raise TimeoutError()
+        result = run_once(self.store, replace(self.settings, host_collection_sweep=True), pi_client=fail, evaluator=self.pending)
+        self.assertEqual(result["status"], "pending")
+        stored = self.store.get_run(self.run_id)
+        self.assertTrue(stored["evidence"], "native documents must be attempted even when Pi stops")
+        self.assertEqual(stored["work_units"][0]["state"], "succeeded")
+        self.assertIn("pi_worker_failed:TimeoutError", result["coverage_gaps"])
+
+    def test_collection_and_final_search_continue_after_old_total_duration(self):
+        monotonic = [0.0]
+        stages = []
+        def native(*args, **kwargs):
+            self.assertIsNone(kwargs["deadline"])
+            monotonic[0] += 1801
+            stages.append("native")
+        def pi(*args):
+            monotonic[0] += 1801
+            stages.append("pi")
+            return {}
+        def pages(*args, **kwargs):
+            self.assertIsNone(kwargs["deadline"])
+            monotonic[0] += 1801
+            stages.append("pages")
+        def search(*args, **kwargs):
+            self.assertIsNone(kwargs["deadline"])
+            stages.append("search")
+            return {"pages": 1, "queries": [""]}
+        with patch("apps.control_api.worker.time.monotonic", side_effect=lambda: monotonic[0]), \
+                patch("apps.control_api.worker.collect_native_files", side_effect=native), \
+                patch("apps.control_api.worker.collect_remaining_pages", side_effect=pages), \
+                patch("apps.control_api.worker.collect_exhaustive_search", side_effect=search):
+            result = run_once(self.store, replace(self.settings, host_collection_sweep=True, task_timeout=1),
+                              pi_client=pi, evaluator=self.pending)
+        self.assertEqual(stages, ["native", "pi", "pages", "search"])
+        self.assertEqual(result["status"], "pending")
+        self.assertGreater(monotonic[0], 3600)
+
+    def test_host_sweep_closes_plan_search_after_pi_failure_without_a_verdict(self):
+        plan = {"revision": "asset", "planRevision": "search-plan",
+                "retrievalQueries": {"trigger": ["事件编号"]}}
+        accepted = self.store.accept({"mineId": "m1", "checkCycle": "2026-10", "executionId": "search-plan",
+                                      "items": [{"itemCode": "stop_work_unload"}]}, {"stop_work_unload": plan})
+        rid = accepted["runs"][0]["run_id"]
+        def fail(*_):
+            raise TimeoutError()
+        result = run_once(self.store, replace(self.settings, host_collection_sweep=True),
+                          run_id=rid, pi_client=fail, evaluator=self.pending)
+        self.assertEqual(result["status"], "pending")
+        self.assertEqual(result["coverage_audit"]["units"][0]["state"], "searched_no_hit")
+        self.assertEqual(len(self.store.get_run(rid)["searches"]), 2)
+        self.assertIn("pi_worker_failed:TimeoutError", result["coverage_gaps"])
+
     def test_pause_does_not_publish_result(self):
         def pause(*_):
             self.store.control(self.task_id, "pause")
@@ -100,10 +154,25 @@ class WorkerTests(unittest.TestCase):
 
     def test_heartbeat_preserves_long_source_lease(self):
         settings = replace(self.settings, lease_seconds=0.3, pi_enabled=False)
+        clock = [1000.0]
+        self.store.clock = lambda: clock[0]
+        renewed = threading.Event()
+        renew = self.store.renew
+        def observe_renew(*args, **kwargs):
+            result = renew(*args, **kwargs)
+            renewed.set()
+            return result
         def source(run, _settings):
-            time.sleep(0.45)
+            # Advance business time beyond the original lease, while letting
+            # the real heartbeat renew between advances. Wall-clock startup
+            # or slow Windows filesystem scheduling must not expire the test.
+            for _ in range(3):
+                renewed.clear()
+                clock[0] += 0.2
+                self.assertTrue(renewed.wait(5), "heartbeat did not renew")
             return {"snapshot_id": "s1", "manifest_hash": "h1", "evidence": [], "files": [], "coverage_gaps": []}
-        result = run_once(self.store, settings, source_loader=source, evaluator=self.pending)
+        with patch.object(self.store, "renew", side_effect=observe_renew):
+            result = run_once(self.store, settings, source_loader=source, evaluator=self.pending)
         self.assertEqual(result["status"], "pending")
 
     def test_callback_retry_keeps_payload_identity_and_stops_at_budget(self):
@@ -143,6 +212,7 @@ class PiHttpTests(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 seen.append((self.path, self.headers.get("X-Internal-Token"), json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+                time.sleep(.15)
                 body = b'{"gaps":[],"toolCalls":2}'
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(body)))
@@ -154,7 +224,7 @@ class PiHttpTests(unittest.TestCase):
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
-            settings = Settings(pi_worker_url=f"http://127.0.0.1:{server.server_port}", internal_token="secret", task_timeout=2)
+            settings = Settings(pi_worker_url=f"http://127.0.0.1:{server.server_port}", internal_token="secret", task_timeout=.01)
             result = _run_pi({"run_id": "r1", "rule_revision": "revision", "snapshot": {"manifest_hash": "mh"}, "plan": {}}, settings, "owner", 3)
             self.assertEqual(result["toolCalls"], 2)
             self.assertEqual(seen[0][0], "/v1/inspect")
@@ -162,6 +232,7 @@ class PiHttpTests(unittest.TestCase):
             self.assertEqual(seen[0][2]["work_owner"], "owner")
             self.assertEqual(seen[0][2]["work_fence"], 3)
             self.assertEqual(seen[0][2]["manifest_hash"], "mh")
+            self.assertNotIn("deadline_ms", seen[0][2])
         finally:
             server.shutdown()
             server.server_close()

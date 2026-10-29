@@ -1,4 +1,6 @@
 import copy
+import hashlib
+import json
 from itertools import permutations
 import unittest
 
@@ -21,6 +23,14 @@ class PlanContractTests(unittest.TestCase):
         plan = compile_plan("stop_work_unload")
         self.assertEqual(len(plan["executionPlan"]["materials"]), 6)
         self.assertEqual(len(plan["planRevision"]), 64)
+
+    def test_retrieval_queries_reference_frozen_propositions(self):
+        plan = self.plan()
+        plan["retrievalQueries"] = {"trigger": ["预警", "超限"]}
+        self.assertEqual(validate_plan(plan)["executionPlan"]["retrievalQueries"], plan["retrievalQueries"])
+        for value in ({"outside": ["预警"]}, {"trigger": []}, {"trigger": ["预警", "预警"]}):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_plan({**self.plan(), "retrievalQueries": value})
 
     def test_unknown_dependency_and_cycle_are_rejected_before_execution(self):
         for dependencies in ({"action": ["outside"]}, {"action": ["trigger"], "trigger": ["action"]}):
@@ -131,6 +141,25 @@ class CoverageAuditTests(unittest.TestCase):
         self.assertFalse(result["coverage_complete"])
         self.assertEqual(result["units"][0]["state"], "not_searched")
         self.assertIn("scope_proof_missing", result["gaps"])
+
+    def test_stale_exhaustive_receipt_does_not_close_current_index(self):
+        self.snapshot["evidence"] = [{"evidence_id": "ev1", "file_id": "f1", "text": "原文"}]
+        result = self.audit(searches=[{"file_id": "f1", "unit_id": "page:1", "complete": True,
+                                      "hit_count": 0, "query_hash": "x", "index_revision": "old"}])
+        self.assertEqual(result["units"][0]["state"], "not_searched")
+
+    def test_plan_queries_must_all_close_on_current_index(self):
+        self.snapshot["evidence"] = [{"evidence_id": "ev1", "file_id": "f1", "text": "预警 停工"}]
+        self.plan["retrievalQueries"] = {"trigger": ["预警"], "stop": ["停工"]}
+        revision = hashlib.sha256(json.dumps(["ev1"], ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        def receipt(query, hits):
+            return {"file_id": "f1", "unit_id": "page:1", "complete": True,
+                    "query_hash": hashlib.sha256(json.dumps(query, ensure_ascii=False).encode()).hexdigest(),
+                    "index_revision": revision, "unit_hit_counts": {"f1/page:1": hits}}
+        first = [receipt("", 1), receipt("预警", 1)]
+        self.assertEqual(self.audit(searches=first)["units"][0]["state"], "not_searched")
+        self.assertEqual(self.audit(searches=first + [receipt("停工", 0)])["units"][0]["state"], "searched_hit")
+        self.assertEqual(self.audit(searches=[receipt("", 0), receipt("预警", 0), receipt("停工", 0)])["units"][0]["state"], "searched_no_hit")
 
     def test_tamper_wrong_owner_cycle_manifest_and_incomplete_inventory_fail(self):
         proof = sign_scope_proof(self.payload, self.key)

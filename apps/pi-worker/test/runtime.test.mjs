@@ -51,14 +51,41 @@ test("actual Pi Agent rejects malformed OCR tool arguments before making an Evid
   } finally { await close(model); await close(evidence); }
 });
 
-test("actual Pi Agent deadline cancels the model request", { concurrency: false }, async () => {
+test("actual Pi Agent continues beyond legacy request and environment deadlines", { concurrency: false }, async () => {
   const evidence = createServer((req, res) => evidenceJSON(req, res));
   const model = createServer(async (req, res) => { for await (const _ of req) {} await new Promise((resolve) => setTimeout(resolve, 150)); if (!res.destroyed) sse(res); });
   const evidenceUrl = await listen(evidence); const modelUrl = await listen(model);
   Object.assign(process.env, { PI_MODEL_BASE_URL: `${modelUrl}/v1`, PI_MODEL_ID: "qwen-test", INTERNAL_TOKEN: "test-token", EVIDENCE_API_URL: evidenceUrl });
+  const previousDeadline = process.env.PI_DEADLINE_MS;
+  process.env.PI_DEADLINE_MS = "1";
   try {
-    await assert.rejects(runInspection({ run_id: "r1", rule_revision: "rev1", manifest_hash: "hash", work_owner: "test-worker", work_fence: 1, deadline_ms: 30 }), /inspection_deadline/);
-  } finally { await close(model); await close(evidence); }
+    const { runInspection: noDeadlineInspection } = await import("../src/runtime.mjs?legacy-deadline-test");
+    const result = await noDeadlineInspection({ run_id: "r1", rule_revision: "rev1", manifest_hash: "hash", work_owner: "test-worker", work_fence: 1, deadline_ms: 1, budgets: { deadline_ms: 1 } });
+    assert.equal(result.modelTurns, 1);
+  } finally {
+    if (previousDeadline === undefined) delete process.env.PI_DEADLINE_MS; else process.env.PI_DEADLINE_MS = previousDeadline;
+    await close(model); await close(evidence);
+  }
+});
+
+test("one stalled model request times out without creating a total task deadline", { concurrency: false }, async () => {
+  const evidence = createServer((req, res) => evidenceJSON(req, res));
+  const model = createServer(async (req, res) => {
+    for await (const _ of req) {}
+    await new Promise(resolve => setTimeout(resolve, 150));
+    if (!res.destroyed) sse(res);
+  });
+  const evidenceUrl = await listen(evidence); const modelUrl = await listen(model);
+  Object.assign(process.env, { PI_MODEL_BASE_URL: `${modelUrl}/v1`, PI_MODEL_ID: "qwen-test", INTERNAL_TOKEN: "test-token", EVIDENCE_API_URL: evidenceUrl });
+  const previousTimeout = process.env.PI_MODEL_REQUEST_TIMEOUT_MS;
+  process.env.PI_MODEL_REQUEST_TIMEOUT_MS = "30";
+  try {
+    const { runInspection: requestBoundedInspection } = await import("../src/runtime.mjs?model-request-timeout-test");
+    await assert.rejects(requestBoundedInspection({ run_id: "r1", rule_revision: "rev1", manifest_hash: "hash", work_owner: "test-worker", work_fence: 1 }), /model_request_timeout/);
+  } finally {
+    if (previousTimeout === undefined) delete process.env.PI_MODEL_REQUEST_TIMEOUT_MS; else process.env.PI_MODEL_REQUEST_TIMEOUT_MS = previousTimeout;
+    await close(model); await close(evidence);
+  }
 });
 
 test("multiple actual Pi inspections respect the worker-wide model concurrency limit", { concurrency: false }, async () => {
@@ -288,7 +315,7 @@ test("frozen host input token cap and legacy maxTokens refuse inference despite 
   } finally { await close(model); await close(evidence); }
 });
 
-test("frozen deadline includes plan fetch time and cannot restart a full deadline after preflight", async () => {
+test("frozen deadline settings do not impose a total inspection cutoff", async () => {
   let modelCalls = 0;
   const evidence = createServer(async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 80));
@@ -298,8 +325,9 @@ test("frozen deadline includes plan fetch time and cannot restart a full deadlin
   const evidenceUrl = await listen(evidence); const modelUrl = await listen(model);
   Object.assign(process.env, { PI_MODEL_BASE_URL: `${modelUrl}/v1`, PI_MODEL_ID: "qwen-test", INTERNAL_TOKEN: "test-token", EVIDENCE_API_URL: evidenceUrl });
   try {
-    await assert.rejects(runInspection({ run_id: "r1", rule_revision: "rev1", manifest_hash: "hash", work_owner: "worker", work_fence: 1, deadline_ms: 5000 }), /inspection_deadline/);
-    assert.equal(modelCalls, 0);
+    const result = await runInspection({ run_id: "r1", rule_revision: "rev1", manifest_hash: "hash", work_owner: "worker", work_fence: 1, deadline_ms: 1 });
+    assert.equal(modelCalls, 1);
+    assert.equal(result.deadlineMs, null);
   } finally { await close(model); await close(evidence); }
 });
 

@@ -65,4 +65,6 @@ docker compose --env-file .env.example -f infra/docker/compose.offline.yml confi
 
 真实资料基准入口：`python -m scripts.benchmark --mine <矿井> --cycle <YYYY-MM> --output .local/benchmark.json`。它会调用部署配置中的真实服务，记录耗时、文件哈希、覆盖及识别尝试；不会清空已有缓存，也尚未汇总全量 Pi tokens、队列等待、内存峰值或多次运行 P95。冷启动比较使用新配置的缓存目录，不能以热缓存结果冒充首次处理。当前验证记录见 [2026-10-28 验证](docs/verification-2026-10-28.md)。
 
+检查任务不设总时长截止，30 分钟仅作为性能优化目标。慢任务由租约心跳维持，完成取证、检索和评估后自然结束；单次模型/OCR/PDF 请求的局部超时用于故障处理，不代表整项检查超时。旧任务总 deadline 配置不再生效。
+
 Linux 离线交付见 [部署说明](docs/deployment.md)，设计调整见 [架构决策](docs/architecture-decisions.md)。镜像不包含任何模型权重或 OCR 推理服务。

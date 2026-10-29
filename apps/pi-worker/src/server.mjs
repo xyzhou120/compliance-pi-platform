@@ -32,8 +32,9 @@ function canonical(value) {
 }
 
 function errorResponse(error) {
-  const codes = new Set(["inspection_deadline", "frozen_plan_mismatch", "context_budget_exhausted", "plan_context_too_large", "model_turn_budget_exhausted", "model_request_failed", "inspection_aborted", "client_disconnected", "input_token_budget_exhausted", "output_token_budget_exhausted", "page_budget_exhausted"]);
-  const code = codes.has(error?.message) ? error.message : "inspection_failed";
+  const codes = new Set(["inspection_deadline", "frozen_plan_mismatch", "context_budget_exhausted", "plan_context_too_large", "model_turn_budget_exhausted", "model_request_failed", "model_request_timeout", "inspection_aborted", "client_disconnected", "input_token_budget_exhausted", "output_token_budget_exhausted", "page_budget_exhausted"]);
+  const detail = String(error?.message || "");
+  const code = codes.has(detail) || /^model_request_failed_(?:\d{3}|network_error|unknown)$/.test(detail) ? detail : "inspection_failed";
   return { status: code === "inspection_deadline" ? 408 : code === "frozen_plan_mismatch" ? 409 : 502, body: { detail: code } };
 }
 

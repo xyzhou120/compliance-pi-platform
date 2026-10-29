@@ -211,7 +211,8 @@ def _remote_manifest(run: dict, settings: Any, config: dict, *, query_fn: Callab
                           "byte_size": receipt["byte_size"], "source_role": role, "material_group": catalog.get("material_group", row.get("material_group")),
                           "report_date": row.get("report_date") or row.get("report_time"),
                           "report_time_year": row.get("report_time_year"), "report_time_month": row.get("report_time_month"),
-                          "source_metadata": {"row_index": row_index, "file_name_id": row.get("file_name_id")}})
+                          "source_metadata": {"row_index": row_index, "file_name_id": row.get("file_name_id"),
+                              **{key: row[key] for key in ("logical_source_key", "coverage_period", "scope_key") if key in row}}})
         except (AcquisitionError, OSError, ValueError) as exc:
             reason = str(exc) if isinstance(exc, AcquisitionError) else type(exc).__name__
             if not re.fullmatch(r"[A-Za-z0-9_:.-]{1,120}", reason):

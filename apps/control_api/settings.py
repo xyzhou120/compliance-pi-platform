@@ -27,7 +27,8 @@ class Settings:
     pi_worker_url: str = "http://127.0.0.1:8093"
     pi_enabled: bool = False
     lease_seconds: int = 120
-    task_timeout: int = 1800
+    # Legacy constructor field; total task duration is no longer a stop condition.
+    task_timeout: int = 0
     max_model_calls: int = 80
     max_work_attempts: int = 3
     provider_concurrency: int = 2
@@ -50,6 +51,7 @@ class Settings:
     max_total_pages: int = 5000
     max_provider_attempts: int = 2
     model_concurrency: int = 2
+    host_collection_sweep: bool = False
     evidence_review_key: str = field(default="", repr=False)
     evidence_review_receipts: Path | None = None
 
@@ -66,7 +68,7 @@ class Settings:
             pi_worker_url=os.getenv("PI_WORKER_URL", "http://127.0.0.1:8093").rstrip("/"),
             pi_enabled=os.getenv("PI_ENABLED", "true" if os.getenv("COMPLIANCE_ENVIRONMENT") == "production" else "false").lower() == "true",
             lease_seconds=_integer("COMPLIANCE_LEASE_SECONDS", 120, maximum=3600),
-            task_timeout=_integer("COMPLIANCE_TASK_TIMEOUT", 1800, maximum=86400),
+            task_timeout=0,
             max_model_calls=_integer("PI_MAX_TOOL_CALLS", 80, maximum=10000),
             max_work_attempts=_integer("COMPLIANCE_MAX_WORK_ATTEMPTS", 3),
             provider_concurrency=_integer("MAX_OCR_CONCURRENCY", 2, maximum=64),
@@ -89,6 +91,7 @@ class Settings:
             max_total_pages=_integer("PI_MAX_TOTAL_PAGES", 5000, maximum=100000),
             max_provider_attempts=_integer("PROVIDER_MAX_ATTEMPTS", 2, maximum=5),
             model_concurrency=_integer("MAX_MODEL_CONCURRENCY", 2, maximum=64),
+            host_collection_sweep=os.getenv("COMPLIANCE_HOST_COLLECTION_SWEEP", "true").lower() == "true",
             evidence_review_key=os.getenv("COMPLIANCE_EVIDENCE_REVIEW_KEY", ""),
             evidence_review_receipts=Path(os.environ["COMPLIANCE_EVIDENCE_REVIEW_RECEIPTS"]).resolve() if os.getenv("COMPLIANCE_EVIDENCE_REVIEW_RECEIPTS") else None,
         )

@@ -226,6 +226,11 @@ def create_app(*, store: Store | None = None, settings: Settings | None = None, 
         summary_owned(run_id, mine_id)
         return dependencies()[0].run_report(run_id)
 
+    @app.get("/v1/runs/{run_id}/explanation")
+    def run_explanation(run_id: str, mine_id: str | None = None):
+        from .review_plan import explain_frozen_run
+        return explain_frozen_run(run_owned(run_id, mine_id))
+
     @app.get("/v1/runs/{run_id}/files")
     def run_files(run_id: str, mine_id: str | None = None, offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)):
         summary_owned(run_id, mine_id)
@@ -363,7 +368,7 @@ def create_app(*, store: Store | None = None, settings: Settings | None = None, 
             if tool_name == "recognize_pages":
                 return service.recognize(run_id, body, worker_id=owner, fence=fence)
             if tool_name == "permit" and body.get("action") == "acquire" and body.get("resource") == "model":
-                token = dependencies()[0].acquire_permit(run_id, owner, fence, "model", body.get("request_id"), limit=dependencies()[1].model_concurrency, ttl=dependencies()[1].task_timeout + 30)
+                token = dependencies()[0].acquire_permit(run_id, owner, fence, "model", body.get("request_id"), limit=dependencies()[1].model_concurrency, ttl=dependencies()[1].lease_seconds + 30)
                 if token is None:
                     raise HTTPException(429, "model_capacity_exhausted")
                 return {"permit_id": token}

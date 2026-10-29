@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import http.client
 import json
+import re
 import socket
 import threading
 import time
@@ -18,6 +19,7 @@ from .registry import default_registry
 from .settings import Settings
 from .sources import prepare_source
 from .store import Conflict, RunPaused, StaleLease, Store
+from .collection import collect_native_files, collect_remaining_pages, collect_exhaustive_search
 
 
 class LeaseHeartbeat:
@@ -32,7 +34,9 @@ class LeaseHeartbeat:
     def _run(self):
         while not self.stop.wait(self.interval):
             try:
-                self.store.renew(self.run["run_id"], self.worker_id, self.run["fence"], self.lease_seconds)
+                renewed = self.store.renew(self.run["run_id"], self.worker_id, self.run["fence"], self.lease_seconds)
+                if renewed.get("control_state") == "paused":
+                    raise RunPaused(self.run["run_id"])
                 self.store.checkpoint(self.run["run_id"], self.worker_id, self.run["fence"], {"stage": "lease", "event": "heartbeat"})
             except Exception as exc:
                 self.error = exc
@@ -77,14 +81,13 @@ def working_snapshot(store, run: dict) -> dict:
 def _run_pi(run: dict, settings: Settings, owner: str, fence: int, *, check=lambda: None) -> dict:
     payload = {"run_id": run["run_id"], "rule_revision": run["rule_revision"],
                "manifest_hash": run["snapshot"]["manifest_hash"], "plan": run.get("plan", {}),
-               "work_owner": owner, "work_fence": fence, "max_tool_calls": settings.max_model_calls,
-               "deadline_ms": settings.task_timeout * 1000}
+               "work_owner": owner, "work_fence": fence, "max_tool_calls": settings.max_model_calls}
     payload["budgets"] = run.get("plan", {}).get("executionPlan", {}).get("budgets", run.get("plan", {}).get("budgets", {}))
     parsed = urlsplit(settings.pi_worker_url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
         raise ValueError("invalid_pi_worker_url")
     cls = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
-    connection = cls(parsed.hostname, parsed.port, timeout=settings.task_timeout + 5)
+    connection = cls(parsed.hostname, parsed.port, timeout=settings.provider_timeout)
     done, output = threading.Event(), {}
 
     def request():
@@ -92,10 +95,22 @@ def _run_pi(run: dict, settings: Settings, owner: str, fence: int, *, check=lamb
             connection.request("POST", parsed.path.rstrip("/") + "/v1/inspect",
                                json.dumps(payload, ensure_ascii=False).encode(),
                                {"Content-Type": "application/json", "X-Internal-Token": settings.internal_token})
+            # The response spans the entire Pi session; only connection/send
+            # failures use a timeout. Model requests have their own local guard.
+            if connection.sock:
+                connection.sock.settimeout(None)
             response = connection.getresponse()
             body = response.read(16 * 1024 * 1024 + 1)
             if len(body) > 16 * 1024 * 1024 or response.status != 200:
-                raise RuntimeError(f"pi_worker_http_{response.status}")
+                detail = "http_error"
+                try:
+                    parsed_body = json.loads(body.decode("utf-8", errors="replace"))
+                    if isinstance(parsed_body, dict) and isinstance(parsed_body.get("detail"), str):
+                        detail = parsed_body["detail"]
+                except (ValueError, UnicodeError):
+                    pass
+                safe_detail = re.sub(r"[^a-zA-Z0-9_]+", "_", detail).strip("_")[:80] or "http_error"
+                raise RuntimeError(f"pi_worker_http_{response.status}_{safe_detail}")
             data = json.loads(body)
             if not isinstance(data, dict):
                 raise ValueError("invalid_pi_response")
@@ -107,12 +122,9 @@ def _run_pi(run: dict, settings: Settings, owner: str, fence: int, *, check=lamb
 
     thread = threading.Thread(target=request, name="pi-http", daemon=True)
     thread.start()
-    deadline = time.monotonic() + settings.task_timeout
     try:
         while not done.wait(0.1):
             check()
-            if time.monotonic() >= deadline:
-                raise TimeoutError("pi_worker_deadline")
         check()
         if "error" in output:
             raise output["error"]
@@ -146,7 +158,7 @@ def run_once(store: Store, settings: Settings, *, worker_id="control-worker", ru
                 selected = resolve_manifest(run, settings)
                 store.checkpoint(rid, worker_id, fence, {"stage": "source", "event": "started"})
                 document_settings = settings.document_settings()
-                document_settings["inventory_only"] = settings.pi_enabled
+                document_settings["inventory_only"] = settings.pi_enabled or settings.host_collection_sweep
                 if selected.get("source_input_root"):
                     document_settings["input_root"] = selected["source_input_root"]
                 snapshot = source_loader(selected, document_settings)
@@ -164,6 +176,21 @@ def run_once(store: Store, settings: Settings, *, worker_id="control-worker", ru
                 store.checkpoint(rid, worker_id, fence, {"stage": "source", "event": "timing", "elapsed_ms": round((time.perf_counter() - source_started) * 1000, 3)})
             run = normalize_run(store.get_run(rid))
             store.checkpoint(rid, worker_id, fence, {"stage": "source", "event": "finished", "manifest_hash": run["snapshot"].get("manifest_hash")})
+            if settings.host_collection_sweep:
+                sweep_started = time.monotonic()
+                from .evidence import EvidenceService
+                store_service = EvidenceService(store, settings, registry=inspections)
+                store.checkpoint(rid, worker_id, fence, {"stage": "collection", "event": "started"})
+                try:
+                    collect_native_files(store_service, rid, worker_id, fence,
+                                         deadline=None, check=lease.check)
+                    run = normalize_run(store.get_run(rid))
+                except (StaleLease, RunPaused):
+                    raise
+                except Exception as exc:
+                    store.save_records(rid, worker_id, fence, "gap", [{"reason": "host_collection_failed", "error": type(exc).__name__}])
+                store.checkpoint(rid, worker_id, fence, {"stage": "collection", "event": "finished",
+                                   "elapsed_ms": round((time.monotonic() - sweep_started) * 1000, 3)})
             if settings.pi_enabled:
                 pi_started = time.perf_counter()
                 store.checkpoint(rid, worker_id, fence, {"stage": "pi", "event": "started"})
@@ -180,9 +207,28 @@ def run_once(store: Store, settings: Settings, *, worker_id="control-worker", ru
                 except (StaleLease, RunPaused):
                     raise
                 except Exception as exc:
-                    store.save_records(rid, worker_id, fence, "gap", [{"gap_id": f"pi:{fence}", "reason": f"pi_worker_failed:{type(exc).__name__}"}])
+                    detail = re.sub(r"[^a-zA-Z0-9_:-]+", "_", str(exc)).strip("_")[:120]
+                    store.save_records(rid, worker_id, fence, "gap", [{"gap_id": f"pi:{fence}", "reason": f"pi_worker_failed:{detail or type(exc).__name__}"}])
+                if settings.host_collection_sweep:
+                    try:
+                        collect_remaining_pages(store_service, rid, worker_id, fence,
+                                                deadline=None, check=lease.check)
+                    except (StaleLease, RunPaused):
+                        raise
+                    except Exception as recovery_exc:
+                        store.save_records(rid, worker_id, fence, "gap", [{"reason": "host_page_recovery_failed", "error": type(recovery_exc).__name__}])
             else:
                 store.save_records(rid, worker_id, fence, "gap", [{"gap_id": "pi:disabled", "reason": "pi_execution_disabled"}])
+            if settings.host_collection_sweep:
+                # Settle calls left behind by a failed Pi session within their
+                # individual operation limits, independent of task age.
+                drain_deadline = time.monotonic() + max(settings.provider_timeout, 120) + 5
+                while any(unit.get("state") == "running" for unit in store.list_work_units(rid)) and time.monotonic() < drain_deadline:
+                    lease.check()
+                    time.sleep(0.2)
+                closed = store.close_unfinished_units(rid, worker_id, fence)
+                if closed:
+                    store.checkpoint(rid, worker_id, fence, {"stage": "collection", "event": "finished", "unsettled_units_failed": closed})
             lease.check()
             store.checkpoint(rid, worker_id, fence, {"stage": "evaluation", "event": "started"})
             run = normalize_run(store.get_run(rid))
@@ -198,6 +244,15 @@ def run_once(store: Store, settings: Settings, *, worker_id="control-worker", ru
                 store.save_evidence(rid, worker_id, fence, reviewed)
                 run = normalize_run(store.get_run(rid))
                 snapshot = service.snapshot(run)
+            if settings.host_collection_sweep:
+                try:
+                    searched = collect_exhaustive_search(service, rid, worker_id, fence,
+                                                         deadline=None, check=lease.check)
+                    store.checkpoint(rid, worker_id, fence, {"stage": "search", "event": "finished", **searched})
+                except (StaleLease, RunPaused):
+                    raise
+                except Exception as search_exc:
+                    store.save_records(rid, worker_id, fence, "gap", [{"reason": "exhaustive_search_failed", "error": type(search_exc).__name__}])
             audit = service.audit(rid)
             base_gaps = list(snapshot.get("coverage_gaps", []))
             snapshot["source_complete"] = audit["source_complete"] and audit["coverage_complete"]

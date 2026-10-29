@@ -108,6 +108,18 @@ class SharedLimitsTests(unittest.TestCase):
         self.assertIsNotNone(self.second.acquire_permit(waiting["run_id"], "b", waiting["fence"], "ocr", "new-call", limit=1))
         self.assertEqual(self.active_permits("ocr"), 1)
 
+    def test_heartbeat_keeps_provider_capacity_held_during_long_running_task(self):
+        _, active = self.claim(owner="active", lease=120)
+        _, waiting = self.claim(owner="waiting", lease=120)
+        self.first.acquire_permit(active["run_id"], "active", active["fence"], "model", "long-call", limit=1, ttl=45)
+        for _ in range(70):
+            self.now += 30
+            self.first.renew(active["run_id"], "active", active["fence"], lease_seconds=120)
+            self.second.renew(waiting["run_id"], "waiting", waiting["fence"], lease_seconds=120)
+            self.assertIsNone(self.second.acquire_permit(waiting["run_id"], "waiting", waiting["fence"], "model", "waiting-call", limit=1))
+        self.first.release_permit(active["run_id"], "active", active["fence"], "model", request_id="long-call")
+        self.assertIsNotNone(self.second.acquire_permit(waiting["run_id"], "waiting", waiting["fence"], "model", "waiting-call", limit=1))
+
     def test_new_mine_gets_a_turn_before_an_old_mines_backlog(self):
         for _ in range(8):
             self.accept("busy-mine")

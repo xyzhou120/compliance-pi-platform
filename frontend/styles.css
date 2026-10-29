@@ -105,6 +105,32 @@ tr.selected { background: #eef5ec; }
 .body-content p:last-child { margin-bottom: 0; }
 .report-description { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
 .report-detail { font-size: 12px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
+.report-relations { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.review-plan { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.8; }
+.review-plan-head { display: grid; gap: 4px; margin-bottom: 8px; }
+.review-plan-head span { color: var(--muted); }
+.review-action { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.review-action summary { cursor: pointer; font-weight: 600; }
+.review-action p { margin: 7px 0; }
+.review-action ul { margin: 7px 0; padding-left: 18px; }
+.review-action li { margin: 4px 0; }
+.review-action small { display: block; color: var(--muted); }
+.review-owner { display: inline-block; margin-right: 7px; color: var(--accent); }
+.review-target { margin: 7px 0; padding: 7px 0; overflow-wrap: anywhere; }
+.review-target summary { font-weight: 400; }
+.file-outcome { margin: 7px 0; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.file-outcome summary { cursor: pointer; }
+.review-target .ref-buttons { gap: 6px; }
+.stored-result { margin-top: 14px; font-size: 12px; color: var(--muted); }
+.stored-result summary { cursor: pointer; }
+.stored-result p { overflow-wrap: anywhere; }
+.answer-text { white-space: pre-wrap; }
+.relation-line { margin: 8px 0; }
+.relation-line small, .relation-note { display: block; color: var(--muted); }
+.source-relations { padding: 21px; border-top: 1px solid var(--line); }
+.source-relations details { padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.source-relations summary { cursor: pointer; font-weight: 600; }
+.source-relations li { margin: 9px 0; }
 .report-delivery { margin-top: 20px; padding-top: 13px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 .timeline { list-style: none; padding: 15px 22px; margin: 0; max-height: 290px; overflow-y: auto; }
 .timeline li { display: flex; gap: 13px; padding: 0 0 17px; position: relative; }

@@ -2,6 +2,7 @@ import json
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -14,6 +15,25 @@ from apps.control_api.worker import normalize_run
 
 
 class EvidenceServiceTests(unittest.TestCase):
+    def test_inspect_documents_keeps_success_when_one_file_fails(self):
+        class SettingsStub:
+            max_document_concurrency = 2
+        class StoreStub:
+            def __init__(self): self.gaps = []
+            def save_records(self, _run_id, _worker_id, _fence, kind, records): self.gaps.extend((kind, record) for record in records)
+        service = EvidenceService.__new__(EvidenceService)
+        service.settings = SettingsStub()
+        service.store = StoreStub()
+        def parse(_run_id, file_id, **_kwargs):
+            if file_id == "bad": raise ValueError("synthetic_parse_error")
+            return {"file_id": file_id, "evidence": [{"evidence_id": "ev-good"}], "coverage": [{"file_id": file_id, "unit_id": "document", "state": "readable"}]}
+        service.parse = parse
+        result = service.inspect_documents("run", ["bad", "good"], worker_id="owner", fence=1)
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["items"][1]["file_id"], "good")
+        self.assertTrue(result["items"][0]["unit_failed"])
+        self.assertEqual(service.store.gaps[0][1]["file_id"], "bad")
+
     def test_pdf_render_external_ocr_stays_candidate_and_stale_fence_cannot_write(self):
         from pypdf import PdfWriter
         with tempfile.TemporaryDirectory() as tmp:
@@ -57,6 +77,9 @@ class EvidenceServiceTests(unittest.TestCase):
                 record = result["evidence"][0]
                 self.assertEqual(record["source_role"], "statement")
                 self.assertFalse(service.coverage(run["run_id"])["source_complete"])
+                coverage = service.audit(run["run_id"])
+                page_units = [unit for unit in coverage["units"] if unit.get("file_id") == "f1"]
+                self.assertEqual(page_units[0]["state"], "not_searched")
                 self.assertEqual(service.search(run["run_id"], "转录")["total"], 1)
                 service.recognize(run["run_id"], {"pages": [{"file_id": "f1", "page": 1}]}, worker_id="worker", fence=run["fence"])
                 self.assertEqual(len(server.calls), 1, "successful OCR must be cached")
@@ -79,3 +102,27 @@ class EvidenceServiceTests(unittest.TestCase):
             self.assertEqual(len(result["evidence"]), 1)
             self.assertEqual(result["evidence"][0]["source_file_ids"], ["a", "b"])
             self.assertEqual(result["files"][0]["report_date"], "2026-10-01")
+
+    def test_search_exhaustive_paginates_and_closes_current_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "one.txt").write_text("预警 " * 7, encoding="utf-8")
+            (root / "m.json").write_text(json.dumps({"files": [{"path": "one.txt", "file_id": "f1", "role": "actual_record"}]}), encoding="utf-8")
+            run = {"run_id": "r1", "mine_id": "m1", "rule_revision": "v1", "scope": {"manifest": str(root / "m.json")}}
+            snapshot = acquire_run(run, {"input_root": str(root), "storage_dir": str(root / "store")})
+            store = Store(root / "ledger.db")
+            try:
+                accepted = store.accept({"mineId": "m1", "checkCycle": "2026-10", "executionId": "search", "items": [{"itemCode": "stop_work_unload"}]}, {})
+                rid = accepted["runs"][0]["run_id"]
+                claimed = normalize_run(store.claim("owner", run_id=rid))
+                snapshot.update(run_id=rid, mine_id="m1", rule_revision="v1")
+                store.save_snapshot(rid, "owner", claimed["fence"], snapshot)
+                service = EvidenceService(store, Settings(input_root=root, storage_dir=root / "store"))
+                service.parse(rid, "f1", worker_id="owner", fence=claimed["fence"])
+                with self.assertRaises(TimeoutError):
+                    service.search_exhaustive(rid, ["预警"], worker_id="owner", fence=claimed["fence"], deadline=0)
+                self.assertEqual(store.get_run(rid)["searches"], [])
+                service.search_exhaustive(rid, ["预警"], worker_id="owner", fence=claimed["fence"], limit=1)
+                self.assertTrue(service.audit(rid)["coverage_complete"])
+            finally:
+                store.engine.dispose()

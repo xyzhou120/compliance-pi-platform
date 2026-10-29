@@ -122,7 +122,7 @@ class FullFlowTests(unittest.TestCase):
                     task_id = response.headers["X-Inspection-Task"]
                     run_id = store.get_task(task_id)["runs"][0]["run_id"]
                     result = run_once(store, settings, run_id=run_id)
-                    self.assertEqual(result["status"], "pending", result)
+                    self.assertEqual(result["status"], "failed", result)
                     stored = store.get_run(run_id)
                     self.assertEqual(len(stored["candidates"]), 1, stored["gaps"])
                     self.assertEqual(stored["candidates"][0]["validation_status"], "source_bound")
@@ -133,7 +133,7 @@ class FullFlowTests(unittest.TestCase):
                     deliver_once(store, settings)
                     self.assertEqual(store.get_run(run_id)["delivery"]["state"], "delivered")
                     self.assertEqual(callbacks[0][1]["mineId"], "m1")
-                    self.assertEqual(callbacks[0][1]["checkResult"], "pending")
+                    self.assertEqual(callbacks[0][1]["checkResult"], "failed")
                     self.assertTrue(callbacks[0][0].startswith("delivery-"))
             finally:
                 node.terminate()

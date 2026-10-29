@@ -199,7 +199,9 @@ def recognize_pages(pages: list[dict], *, settings: dict, pool: ProviderPool | N
                     except Exception as exc:
                         result = None
                         retry = _retryable(exc) and number < max_attempts and not is_cancelled()
-                        own_attempts.append({**base, "provider": label, "phase": phase, "attempt": number, "status": "retry" if retry else "failed", "error": type(exc).__name__, "retryable": _retryable(exc), "elapsed_ms": round((time.monotonic() - started) * 1000, 2)})
+                        from urllib.error import HTTPError
+                        own_attempts.append({**base, "provider": label, "phase": phase, "attempt": number, "status": "retry" if retry else "failed", "error": type(exc).__name__, "retryable": _retryable(exc), "elapsed_ms": round((time.monotonic() - started) * 1000, 2),
+                                             **({"http_status": exc.code} if isinstance(exc, HTTPError) else {})})
                         if not retry:
                             break
                         # Retry backoff is short, bounded, and cancellation aware.

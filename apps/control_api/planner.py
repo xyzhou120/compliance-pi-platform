@@ -195,6 +195,14 @@ def validate_plan(plan: dict, *, registered_operators=()) -> dict:
 
     for code in nodes:
         visit(code)
+    retrieval = compiled.get("retrievalQueries", {})
+    if not isinstance(retrieval, dict) or set(retrieval) - set(nodes):
+        raise ValueError("retrieval queries reference unknown propositions")
+    for code, queries in retrieval.items():
+        if (not isinstance(queries, list) or not queries or len(queries) > 12
+                or any(not isinstance(query, str) or not query.strip() or len(query) > 2000 for query in queries)
+                or len(set(queries)) != len(queries)):
+            raise ValueError(f"invalid retrieval queries for {code}")
     facts = compiled.get("factRequirements", [])
     if not isinstance(facts, list):
         raise ValueError("factRequirements must be a list")
@@ -246,13 +254,16 @@ def validate_plan(plan: dict, *, registered_operators=()) -> dict:
         "propositionOrder": order, "propositions": [nodes[code] for code in order],
         "materials": materials, "factRequirements": facts, "coverageContract": coverage,
         "allowedTools": tools, "budgets": budgets, "conditionalMaterials": conditional_materials,
+        "retrievalQueries": retrieval,
     }
     return compiled
 
 
 def _domain_bundle_hash() -> str:
     root = Path(__file__).parents[2]
-    paths = [Path(__file__), root / "apps" / "control_api" / "validator.py"]
+    paths = [Path(__file__)] + [root / "apps" / "control_api" / name for name in
+        ("validator.py", "review_plan.py", "collection.py", "file_outcomes.py", "pdf_renderer.py", "native_parser.py",
+         "documents.py", "evidence.py", "providers.py", "worker.py")]
     paths.extend(sorted((root / "apps" / "control_api" / "domain").rglob("*.py")))
     paths.extend(sorted((root / "apps" / "control_api" / "domain" / "data").glob("*.json")))
     digest = sha256()

@@ -138,13 +138,19 @@ def audit_coverage(run, snapshot, plan, *, work_units=(), searches=(), proof=Non
         if scope in failed_units and reviewed_rank >= failed_units[scope]:
             failed_units.pop(scope)
     completed_searches = {}
+    evidence_ids = sorted(item["evidence_id"] for item in snapshot.get("evidence", []) if item.get("evidence_id"))
+    index_revision = hashlib.sha256(_canonical(evidence_ids).encode()).hexdigest()
     for search in searches:
         if search.get("complete") is not True and search.get("exhaustive") is not True:
+            continue
+        if search.get("index_revision") and search["index_revision"] != index_revision:
             continue
         keys = search.get("units") or [{"file_id": search.get("file_id"), "unit_id": search.get("unit_id", "document")}]
         for unit in keys:
             if isinstance(unit, dict) and unit.get("file_id"):
-                completed_searches[(unit["file_id"], unit.get("unit_id", "document"))] = search
+                completed_searches.setdefault((unit["file_id"], unit.get("unit_id", "document")), []).append(search)
+    required_queries = [""] + list(dict.fromkeys(query for queries in plan.get("retrievalQueries", {}).values() for query in queries)) if plan.get("retrievalQueries") else []
+    required_hashes = {hashlib.sha256(_canonical(query).encode()).hexdigest() for query in required_queries}
     units, gaps = [], []
     contract = plan.get("coverageContract", plan.get("executionPlan", {}).get("coverageContract", {})) or {}
     for unit in contract.get("units", []):
@@ -181,15 +187,19 @@ def audit_coverage(run, snapshot, plan, *, work_units=(), searches=(), proof=Non
             elif native == "empty":
                 state = "empty"
             else:
-                searched = completed_searches.get((file_id, unit_id))
-                if searched is None:
+                receipts = completed_searches.get((file_id, unit_id), [])
+                if required_hashes:
+                    receipts = [search for search in receipts if search.get("index_revision") == index_revision]
+                if not receipts or (required_hashes and not required_hashes <= {search.get("query_hash") for search in receipts}):
                     state = "not_searched"
-                elif searched.get("state") == "provider_failed":
+                elif any(search.get("state") == "provider_failed" for search in receipts):
                     state = "provider_failed"
-                elif searched.get("state") == "conflicted":
+                elif any(search.get("state") == "conflicted" for search in receipts):
                     state = "conflicted"
                 else:
-                    count = searched.get("hit_count", searched.get("total", 0))
+                    count = max((search.get("unit_hit_counts", {}).get(f"{file_id}/{unit_id}", 0)
+                                 if "unit_hit_counts" in search else search.get("hit_count", search.get("total", 0))
+                                 for search in receipts), default=0)
                     state = "not_searched" if type(count) is not int or count < 0 else "searched_hit" if count else "searched_no_hit"
             units.append({**record, "file_id": file_id, "unit_id": unit_id, "parse_state": native, "state": state})
             if state not in {"searched_hit", "searched_no_hit", "empty"}:

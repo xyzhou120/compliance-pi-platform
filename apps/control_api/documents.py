@@ -86,20 +86,46 @@ def _parser_revision() -> str:
                             "dependencies": {name: version(name) for name in ("pypdf", "python-docx", "openpyxl")}}, sort_keys=True).encode())
 
 
-def _parse_cached(path: Path, *, file_id: str, content_hash: str, source_role: str, storage: Path) -> tuple[dict, bool]:
+def _valid_parsed(parsed: Any, content_hash: str, source_role: str) -> bool:
+    return (isinstance(parsed, dict) and isinstance(parsed.get("format"), str)
+            and isinstance(parsed.get("blocks"), list) and isinstance(parsed.get("coverage"), list)
+            and all(isinstance(block, dict) and isinstance(block.get("text"), str)
+                    and isinstance(block.get("evidence_id"), str) and isinstance(block.get("locator"), dict)
+                    and block.get("content_hash") == content_hash and block.get("source_role") == source_role
+                    for block in parsed["blocks"])
+            and all(isinstance(unit, dict) and isinstance(unit.get("unit_id"), str) and isinstance(unit.get("state"), str)
+                    for unit in parsed["coverage"]))
+
+
+def _parse_cached(path: Path, *, file_id: str, content_hash: str, source_role: str, storage: Path,
+                  isolate: bool = False, timeout: float = 120) -> tuple[dict, bool]:
     cache_key = _sha(json.dumps([content_hash, path.suffix.lower(), source_role, _parser_revision()]).encode())
     cache_path = storage / "native-cache" / f"{cache_key}.json"
     try:
         cached = json.loads(cache_path.read_text(encoding="utf-8"))
         parsed = cached["payload"]
         data_hash = _sha(json.dumps(parsed, ensure_ascii=False, sort_keys=True).encode())
-        if cached["hash"] == data_hash and isinstance(parsed.get("blocks"), list) and isinstance(parsed.get("coverage"), list):
+        if cached["hash"] == data_hash and _valid_parsed(parsed, content_hash, source_role):
             for block in parsed["blocks"]:
                 block["document_id"] = file_id
             return parsed, True
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         pass
-    parsed = parse_file(path, file_id=file_id, content_hash=content_hash, source_role=source_role)
+    if isolate:
+        from .native_parser import parse_isolated
+        isolated = parse_isolated(path, file_id=file_id, content_hash=content_hash,
+                                  source_role=source_role, timeout=timeout)
+        if not isolated.get("ok"):
+            parsed = {"format": path.suffix[1:].lower() or "unknown", "blocks": [],
+                      "coverage": [{"unit_id": "document", "state": "failed", "reason": isolated.get("error", "native_parser_failed")}],
+                      "issues": [{"reason": isolated.get("error", "native_parser_failed")}]}
+        else:
+            parsed = isolated["parsed"]
+            if not _valid_parsed(parsed, content_hash, source_role):
+                parsed = {"format": path.suffix[1:].lower() or "unknown", "blocks": [],
+                          "coverage": [{"unit_id": "document", "state": "failed", "reason": "native_parser_schema_invalid"}]}
+    else:
+        parsed = parse_file(path, file_id=file_id, content_hash=content_hash, source_role=source_role)
     if not any(unit.get("state") == "failed" for unit in parsed["coverage"]):
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         encoded = json.dumps(parsed, ensure_ascii=False, sort_keys=True)
@@ -157,7 +183,9 @@ def parse_frozen_file(snapshot: dict[str, Any], file_id: str, settings: dict[str
     role = file.get("source_role", "statement") if len(roles) == 1 else "statement"
     if role not in {"actual_record", "requirement", "statement", "regulation"}:
         raise SourceRejected("unknown source role")
-    parsed, cached = _parse_cached(path, file_id=origin["file_id"], content_hash=file["content_hash"], source_role=role, storage=storage)
+    parsed, cached = _parse_cached(path, file_id=origin["file_id"], content_hash=file["content_hash"], source_role=role, storage=storage,
+                                   isolate=bool(settings.get("isolate_native_parse", False)),
+                                   timeout=float(settings.get("parse_timeout", 120)))
     owner = {key: snapshot[key] for key in ("run_id", "mine_id", "mine_code", "source_system", "environment", "rule_revision", "snapshot_id") if key in snapshot}
     owner.setdefault("mine_code", snapshot.get("mine_id"))
     owner.setdefault("source_system", "upstream")
@@ -245,7 +273,8 @@ def acquire_run(run: dict[str, Any], settings: dict[str, Any] | None = None) -> 
                   _parse_cached(frozen, file_id=file_id, content_hash=content_hash, source_role=role, storage=storage)[0])
         files.append({"file_id": file_id, "original_name": entry.get("original_name", source.name), "content_hash": content_hash,
                       "byte_size": len(data), "format": parsed["format"], "source_role": role, "material_group": entry.get("material_group"), "path": str(frozen),
-                      **{key: entry[key] for key in ("report_date", "source_metadata", "original_url", "attachment_id", "attachment_url") if key in entry},
+                      **{key: entry[key] for key in ("report_date", "source_metadata", "original_url", "attachment_id", "attachment_url",
+                          "logical_source_key", "coverage_period", "scope_key") if key in entry},
                       **{key: parsed[key] for key in ("page_count", "inventory_issue") if key in parsed}})
         for unit in parsed["coverage"]:
             coverage.append({"file_id": file_id, **unit})
@@ -314,14 +343,10 @@ def get_coverage(snapshot: dict[str, Any]) -> dict[str, Any]:
     return {"total": len(coverage), "readable": sum(item.get("state") in {"readable", "empty"} for item in coverage), "items": coverage, "gaps": snapshot.get("coverage_gaps", [])}
 
 
-def render_pages(snapshot: dict[str, Any], pages: list[dict[str, Any]], *, max_pages: int = 16, dpi: int = 120) -> dict[str, Any]:
+def render_pages(snapshot: dict[str, Any], pages: list[dict[str, Any]], *, max_pages: int = 16, dpi: int = 120, timeout: float | None = None) -> dict[str, Any]:
     """Render only Pi-selected PDF pages; renderer is an optional app dependency."""
     if len(pages) > max_pages:
         raise SourceRejected("render page budget exceeded")
-    try:
-        import pypdfium2 as pdfium
-    except ImportError as exc:
-        return {"images": [], "errors": [{"reason": "page_renderer_unavailable", "detail": str(exc)}]}
     files = {item["file_id"]: item for item in snapshot.get("files", [])}
     images, errors = [], []
     for selected in pages:
@@ -347,26 +372,14 @@ def render_pages(snapshot: dict[str, Any], pages: list[dict[str, Any]], *, max_p
                     image.convert("RGB").save(buffer, format="PNG")
                     images.append({"file_id": file["file_id"], "page": page_number, "image_bytes": buffer.getvalue(), "content_hash": file["content_hash"]})
                 continue
-            document = pdfium.PdfDocument(file["path"])
-            if page_number > len(document):
-                raise ValueError("page_out_of_range")
-            page = document[page_number - 1]
-            try:
-                width, height = page.get_size()
-                if width * height * (dpi / 72) ** 2 > 40_000_000:
-                    raise SourceRejected("page_pixel_budget_exceeded")
-                bitmap = page.render(scale=dpi / 72)
-                try:
-                    pil = bitmap.to_pil()
-                    import io
-                    buffer = io.BytesIO()
-                    pil.save(buffer, format="PNG")
-                    images.append({"file_id": file["file_id"], "page": page_number, "image_bytes": buffer.getvalue(), "content_hash": file["content_hash"]})
-                finally:
-                    bitmap.close()
-            finally:
-                page.close()
-                document.close()
+            from .pdf_renderer import render_pdf_page
+            rendered = render_pdf_page(file["path"], page_number, dpi=dpi, **({"timeout": min(45, timeout)} if timeout is not None else {}))
+            if not rendered.get("ok"):
+                errors.append({"file_id": selected.get("file_id"), "page": page_number,
+                               "reason": rendered.get("error", "pdf_renderer_failed")})
+                continue
+            images.append({"file_id": file["file_id"], "page": page_number,
+                           "image_bytes": rendered["image_bytes"], "content_hash": file["content_hash"]})
         except Exception as exc:
             errors.append({"file_id": selected.get("file_id"), "page": page_number, "reason": type(exc).__name__})
     return {"images": images, "errors": errors}

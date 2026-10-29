@@ -227,6 +227,7 @@ class Store:
             Run.plan_json["planRevision"].as_string().label("plan_revision"),
             Run.plan_json["revision"].as_string().label("asset_revision"),
             Run.result_json["status"].as_string().label("result_status"),
+            Run.result_json["decision_class"].as_string().label("decision_class"),
             Run.result_json["description"].as_string().label("description"),
             func.coalesce(func.json_array_length(Run.snapshot_json["files"]), 0).label("file_count"),
             (func.coalesce(func.json_array_length(Run.snapshot_json["evidence"]), 0) + registered).label("evidence_count"),
@@ -242,6 +243,7 @@ class Store:
         item["ruleRevision"] = item.pop("plan_revision") or item.pop("asset_revision")
         item.pop("asset_revision", None)
         item["description"] = item["description"] or ""
+        item["decision_class"] = item.pop("decision_class") or ""
         item["delivery"] = {"state": item.pop("delivery_state") or "none", "attempt": item.pop("delivery_attempt") or 0}
         return item
 
@@ -438,7 +440,10 @@ class Store:
         with Session(self.engine) as db, db.begin():
             run = self._owned(db, run_id, worker_id, fence, allow_paused=True)
             run.lease_until = self.clock() + lease_seconds
-            return {"runId": run_id, "fence": fence, "leaseUntil": run.lease_until}
+            db.execute(update(ProviderPermit).where(ProviderPermit.run_id == run_id,
+                ProviderPermit.owner == worker_id, ProviderPermit.fence == fence,
+                ProviderPermit.lease_until > self.clock()).values(lease_until=run.lease_until + 30))
+            return {"runId": run_id, "fence": fence, "leaseUntil": run.lease_until, "control_state": run.control_state}
 
     def checkpoint(self, run_id: str, worker_id: str, fence: int, event: dict | None = None) -> dict:
         with Session(self.engine) as db, db.begin():
@@ -570,6 +575,20 @@ class Store:
     def list_work_units(self, run_id: str) -> list[dict]:
         with Session(self.engine) as db:
             return [self._unit_dict(unit) for unit in db.scalars(select(WorkUnit).where(WorkUnit.run_id == run_id).order_by(WorkUnit.created_at, WorkUnit.unit_id)).all()]
+
+    def close_unfinished_units(self, run_id: str, worker_id: str, fence: int) -> int:
+        """Close unsettled work before final evaluation, under the live lease."""
+        with Session(self.engine) as db, db.begin():
+            self._owned(db, run_id, worker_id, fence)
+            units = db.scalars(select(WorkUnit).where(WorkUnit.run_id == run_id, WorkUnit.state.in_(["queued", "running"]))).all()
+            for unit in units:
+                unit.state = "failed"
+                unit.error = "run_finalized_before_unit_completed"
+                data = unit.input_json or {}
+                unit.output_json = {"unit_failed": True, "evidence": [], "attempts": [],
+                    "gaps": [{"file_id": data.get("file_id"), "page": data.get("page"), "reason": unit.error}]}
+                unit.updated_at = self.clock()
+            return len(units)
 
     def acquire_permit(self, run_id, worker_id, fence, resource, request_id, *, limit, ttl=3600):
         if resource not in {"model", "ocr", "document"} or not isinstance(request_id, str) or not request_id or limit < 1:

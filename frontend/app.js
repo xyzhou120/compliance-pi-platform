@@ -1,4 +1,4 @@
-import { escapeHtml as esc, executionLabels, resultLabels, deliveryLabels, propositionName, roleLabels, materialLabels, cadenceLabels, label, locatorText, pageInfo, dateText, reasonText, candidateLabels, stageLabels, eventLabels } from './labels.js';
+import { escapeHtml as esc, executionLabels, resultLabels, decisionLabels, legacyResultLabels, deliveryLabels, propositionName, roleLabels, materialLabels, cadenceLabels, label, locatorText, pageInfo, dateText, reasonText, candidateLabels, stageLabels, eventLabels } from './labels.js';
 
 const state = {
   view: location.hash.replace('#','') || 'runs', ruleMode:'current', runtime: null, runId: sessionStorage.getItem('complianceRunId') || '', run: null, report: null, plan: null,
@@ -7,8 +7,9 @@ const state = {
 };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const classFor = (value) => ({pass:'good',no_pass:'bad',pending:'caution',unverifiable:'neutral',failed:'bad',queued:'neutral',running:'neutral',paused:'caution',completed:'good',delivered:'good',waiting:'caution',sending:'neutral'})[value] || 'neutral';
+const classFor = (value) => ({pass:'good',no_pass:'bad',pending:'caution',unverifiable:'neutral',failed:'bad',issue_found:'bad',no_issue_observed:'good',review_required:'caution',missing_required_data:'neutral',system_processing_incomplete:'bad',legacy_pending:'neutral',queued:'neutral',running:'neutral',paused:'caution',completed:'good',delivered:'good',waiting:'caution',sending:'neutral'})[value] || 'neutral';
 const badge = (value, labels = resultLabels) => `<span class="badge ${classFor(value)}">${esc(label(labels,value))}</span>`;
+const outcomeBadge = (status, decision) => badge(decision || (status==='pending'?'legacy_pending':status), legacyResultLabels);
 const api = async (path, options = {}) => {
   const headers = { Accept:'application/json', ...(options.body ? {'Content-Type':'application/json'} : {}), ...(options.headers || {}) };
   const response = await fetch(path,{...options,headers,signal:options.signal || (options.persist ? AbortSignal.timeout(30000) : state.controller.signal)});
@@ -52,7 +53,7 @@ async function loadRuntime() {
   }
 }
 async function loadTasks(){ const id=state.request; const sequence=state.tasks.sequence=(state.tasks.sequence||0)+1; const params=new URLSearchParams({offset:String(state.tasks.page*state.tasks.limit),limit:String(state.tasks.limit)}); if($('#filterMine').value) params.set('mine_id',$('#filterMine').value); if($('#filterCycle').value) params.set('check_cycle',$('#filterCycle').value); try { const {body}=await api(`/inspection/tasks?${params}`); if(!isCurrent(id) || sequence!==state.tasks.sequence) return; state.tasks.total=body.total||0; renderTasks(body.items||[]); $('#listFreshness').textContent=`更新于 ${new Date().toLocaleTimeString('zh-CN',{hour12:false})}`; } catch(error){ if(isCurrent(id)) $('#taskRows').innerHTML=`<tr><td colspan="7" class="empty-cell">${esc(error.message)}</td></tr>`; } }
-function renderTasks(items){ $('#taskTotal').textContent=state.tasks.total; const start=state.tasks.page*state.tasks.limit; $('#taskPageInfo').textContent=pageInfo(start,items.length,state.tasks.total); $('#taskPrev').disabled=state.tasks.page===0; $('#taskNext').disabled=(start+state.tasks.limit)>=state.tasks.total; $('#taskRows').innerHTML=items.length ? items.map((task)=>{ const run=task.runs?.[0]||{}; const id=runIdOf(run); return `<tr class="${id===state.runId?'selected':''}" data-run-id="${esc(id)}"><td><div class="row-title">${esc(task.mineId)}<small>${esc(run.name || run.itemName || run.itemCode || '检查项')} · ${esc(task.taskId)}</small></div></td><td class="mono">${esc(task.checkCycle)}</td><td>${badge(run.state,executionLabels)}</td><td>${badge(run.result_status,resultLabels)}</td><td>${badge(run.delivery?.state || run.delivery_state,deliveryLabels)}</td><td class="mono">${esc(dateText(task.created_at))}</td><td><button class="text-button open-run" type="button" data-run-id="${esc(id)}">查看 →</button></td></tr>` }).join(''):'<tr><td colspan="7" class="empty-cell">当前没有任务记录。</td></tr>'; }
+function renderTasks(items){ $('#taskTotal').textContent=state.tasks.total; const start=state.tasks.page*state.tasks.limit; $('#taskPageInfo').textContent=pageInfo(start,items.length,state.tasks.total); $('#taskPrev').disabled=state.tasks.page===0; $('#taskNext').disabled=(start+state.tasks.limit)>=state.tasks.total; $('#taskRows').innerHTML=items.length ? items.map((task)=>{ const run=task.runs?.[0]||{}; const id=runIdOf(run); return `<tr class="${id===state.runId?'selected':''}" data-run-id="${esc(id)}"><td><div class="row-title">${esc(task.mineId)}<small>${esc(run.name || run.itemName || run.itemCode || '检查项')} · ${esc(task.taskId)}</small></div></td><td class="mono">${esc(task.checkCycle)}</td><td>${badge(run.state,executionLabels)}</td><td>${outcomeBadge(run.result_status,run.decision_class)}</td><td>${badge(run.delivery?.state || run.delivery_state,deliveryLabels)}</td><td class="mono">${esc(dateText(task.created_at))}</td><td><button class="text-button open-run" type="button" data-run-id="${esc(id)}">查看 →</button></td></tr>` }).join(''):'<tr><td colspan="7" class="empty-cell">当前没有任务记录。</td></tr>'; }
 async function loadRun(id) {
   if(!id) return;
   const same=state.runId===id;
@@ -60,7 +61,7 @@ async function loadRun(id) {
   const token=state.request;
   if(!same){
     state.files.page=0;state.candidates.page=0;state.evidence.page=0;state.progressAfter=0;
-    state.run=null;state.report=null;state.plan=null;state.navigation=null;state.evidenceRows=[];
+    state.run=null;state.report=null;state.plan=null;state.navigation=null;state.evidenceRows=[];state.reviewPlan=null;
     $('#selectedRun').hidden=true;
     $('#evidenceInspector').textContent='选择一条证据，查看精确引用与文件定位。';
     $('#evidenceList').replaceChildren();$('#navigationContent').textContent='正在读取所选运行…';
@@ -72,14 +73,15 @@ async function loadRun(id) {
     $('#questionButton').disabled=false;$('#compareButton').disabled=false;$('#saveReview').disabled=false;
   }
   try {
-    const [summary,report,plan]=await Promise.all([
+    const [summary,report,plan,explanation]=await Promise.all([
       api(`/v1/runs/${encodeURIComponent(id)}/summary`),
       api(`/v1/runs/${encodeURIComponent(id)}/report`),
       api(`/v1/runs/${encodeURIComponent(id)}/plan`),
+      api(`/v1/runs/${encodeURIComponent(id)}/explanation`).catch(()=>({body:null})),
     ]);
     if(token!==state.request) return;
     const events=same?(state.run?.events || []):[];
-    state.run={...summary.body,events}; state.report=report.body.result || null; state.plan=plan.body.plan || plan.body;
+    state.run={...summary.body,events}; state.report=report.body.result || null; state.plan=plan.body.plan || plan.body; state.reviewPlan=explanation.body;
     renderRun(); updateQuestionPropositions(); await loadProgress(token);
     $$('#taskRows tr[data-run-id]').forEach((row)=>row.classList.toggle('selected',row.dataset.runId===id));
     if(state.view==='evidence'){await loadEvidence(0);await loadNavigation();}
@@ -100,7 +102,51 @@ async function loadProgress(token=state.request) {
     $('#progressMore').hidden=events.length<100;
   } catch(error){handleError(error);}
 }
-function renderRun(){ const run=state.run||{}, report=state.report||{}; $('#selectedRun').hidden=false; $('#runTitle').textContent=`${run.mineId || run.mine_id} · ${run.name || run.itemCode || run.item_code}`; $('#runIdentity').textContent=`${runIdOf(run)} / ${run.ruleRevision || '—'}`; $('#executionMetric').innerHTML=badge(run.state || run.execution_state,executionLabels); $('#resultMetric').innerHTML=badge(report.status || run.result_status,resultLabels); $('#evidenceMetric').textContent=run.evidence_count ?? run.evidence?.length ?? '—'; $('#gapsMetric').textContent=run.coverage_gap_count ?? report.coverage_gaps?.length ?? '—'; $('#resultBadge').innerHTML=badge(report.status || run.result_status,resultLabels); $('#resultSummary').innerHTML=report.status ? `<div class="report-description">${esc(report.description)}</div><div class="report-detail">${esc(report.detail || '')}</div><div class="report-delivery">回写：${badge(run.delivery?.state || run.delivery_state,deliveryLabels)} · 规则与证据可继续追溯。</div>`:'<p class="muted">任务尚未定版。</p>'; const control=$('#controlButton'); if(['queued','running','paused'].includes(run.state)){control.hidden=false;control.textContent=run.control_state==='paused' || run.state==='paused'?'恢复执行':'暂停执行';}else control.hidden=true; renderTimeline(); renderPropositions(); renderPlan(); }
+function relationSummary(report){
+  const audit=report?.source_relations, counts=audit?.counts||{};
+  if(!audit) return '';
+  const conflict=(audit.relations||[]).filter(row=>row.kind==='fact_conflict' && row.blocks_verdict);
+  const candidate=(audit.relations||[]).filter(row=>row.kind==='version_candidate');
+  const fields={status:'执行状态',value:'临界指标值',hazard_confirmed:'危险确认',immediate:'立即处置',route_conforms:'撤人路线',acceptance_passed:'验收结果'};
+  const valueLabels={done:'已实施',not_done:'明确未实施',true:'是',false:'否'};
+  const lines=[];
+  if(conflict.length){
+    lines.push(`<strong>需要人工核对的事实冲突（${conflict.length}组）</strong>`);
+    conflict.slice(0,3).forEach(row=>{
+      const names=(row.files||[]).map(file=>file.original_name||file.file_id).join('、');
+      const values=(row.differences||[]).map(item=>(valueLabels[String(item.value)]||String(item.value??'—'))+(item.unit?` ${item.unit}`:'')).join(' / ');
+      lines.push(`<div class="relation-line">${esc(row.context?.workface||'未标明地点')} · ${esc(fields[row.context?.field]||row.context?.field||'事实字段')}：${esc(values)}<small>来源：${esc(names)}</small></div>`);
+    });
+  } else if(candidate.length){
+    lines.push(`<strong>版本提示（${candidate.length}组）</strong><div class="relation-line">同类资料存在不同文件，系统保留全部来源，未自动选择“最新版”。</div>`);
+  }
+  if(counts.parallel) lines.push(`<div class="relation-note">并列资料 ${counts.parallel} 组：同类多份资料本身不构成冲突。</div>`);
+  return lines.length?`<div class="report-relations">${lines.join('')}</div>`:'';
+}
+function reviewPlanSummary(plan){
+  if(!plan || !Array.isArray(plan.actions) || !plan.actions.length)return '';
+  const labels={system:'系统处理',source:'资料来源',business:'业务复核'};
+  const actionRows=plan.actions.map((action)=>{
+    const allTargets=action.targets||[], targets=allTargets.slice(0,12).map(target=>{
+      const pages=(target.units||[]).map(unit=>{
+        const page=/^page:(\d+)$/.exec(unit);
+        if(!page)return `<span>${esc(unit==='document'?'整份文档':unit)}</span>`;
+        const renderable=target.format==='pdf'||['png','jpg','jpeg','tif','tiff','webp'].includes(target.format);
+        return renderable?`<button type="button" class="text-button preview-file" data-file-id="${esc(target.file_id)}" data-file-name="${esc(target.file_name)}" data-page="${esc(page[1])}">第${esc(page[1])}页</button>`:`<span>第${esc(page[1])}页</span>`;
+      }).join(' ');
+      return `<details class="review-target"><summary>${esc(target.file_name)} · ${esc(target.unit_count)} 个定位</summary><button type="button" class="text-button preview-file" data-file-id="${esc(target.file_id)}" data-file-name="${esc(target.file_name)}">打开原始文件</button><div class="ref-buttons">${pages}</div>${target.related_propositions?.length?`<small>关联检查步骤：${esc(target.related_propositions.map(propositionName).join('、'))}（是否适用仍按事件判断）</small>`:''}</details>`;
+    }).join('');
+    const moreTargets=allTargets.length>12?`<p class="muted">还有 ${esc(allTargets.length-12)} 个文件定位，请到“覆盖与对比”查看完整单元清单。</p>`:'';
+    const citations=(action.evidence_refs||[]).map(ref=>`<button type="button" class="text-button" data-ref="${esc(ref)}">查看原文引用</button>`).join('');
+    const count=action.unit_count?` · ${esc(action.unit_count)} 个单元`:'';
+    return `<details class="review-action"${action.code==='provider_failed'||action.code==='processing_incomplete'?' open':''}><summary><span class="review-owner">${esc(labels[action.owner]||action.owner||'待处理')}</span>${esc(action.title)}${count}</summary><p>${esc(action.reason)}</p>${action.related_propositions?.length?`<p>命题：${esc(action.related_propositions.map(propositionName).join('、'))}</p>`:''}<p><strong>下一步：</strong>${esc(action.next_step)}</p>${targets}${moreTargets}${citations}</details>`;
+  }).join('');
+  const outcomes=plan.file_outcomes, notable=(outcomes?.items||[]).filter(item=>item.notable).slice(0,12);
+  const outcomeRows=notable.map(item=>`<details class="file-outcome"><summary>${esc(item.file_name)} · ${esc({business_issue:'有问题线索',processing_failed:'处理失败',unfinished:'未完成',candidate_review:'候选待复核',needs_recognition:'识别未完整',needs_search:'待命题检索',unprocessed:'未处理',processed:'已处理'}[item.status]||item.status)}</summary><p>${esc(item.description)}</p><p>证据片段 ${esc(item.evidence_count)} · 异常单元 ${(item.problem_units||[]).length}</p>${(item.failures||[]).map(failure=>`<p class="muted">${esc(failure.stage||'处理')} ${failure.page?`第${esc(failure.page)}页`:''}：${esc(failure.reason)}</p>`).join('')}<button type="button" class="text-button preview-file" data-file-id="${esc(item.file_id)}" data-file-name="${esc(item.file_name)}">打开原始文件</button></details>`).join('');
+  const outcomeMore=outcomes&&outcomes.notable_count>12?`<p class="muted">还有 ${esc(outcomes.notable_count-12)} 份需处理或复核的文件，请到“原始文件”和“覆盖与对比”查看完整列表。</p>`:'';
+  return `<div class="review-plan"><div class="review-plan-head"><strong>具体原因与处理清单</strong><span>系统处理、资料补充、业务复核分别列明。展开文件名后可点击具体页码。</span></div>${actionRows}${outcomeRows?`<h4>按文件结果</h4>${outcomeRows}${outcomeMore}`:''}</div>`;
+}
+function renderRun(){ const run=state.run||{}, report=state.report||{}; const review=state.reviewPlan, decision=report.decision_class || review?.decision_class, decisionSummary=report.decision_summary || review?.decision_summary; $('#selectedRun').hidden=false; $('#runTitle').textContent=`${run.mineId || run.mine_id} · ${run.name || run.itemCode || run.item_code}`; $('#runIdentity').textContent=`${runIdOf(run)} / ${run.ruleRevision || '—'}`; $('#executionMetric').innerHTML=badge(run.state || run.execution_state,executionLabels); $('#resultMetric').innerHTML=outcomeBadge(report.status || run.result_status,decision); $('#evidenceMetric').textContent=run.evidence_count ?? run.evidence?.length ?? '—'; $('#gapsMetric').textContent=run.coverage_gap_count ?? report.coverage_gaps?.length ?? '—'; $('#resultBadge').innerHTML=outcomeBadge(report.status || run.result_status,decision); const collectionIssue=review && !review.has_propositions && ['pending','unverifiable'].includes(report.status); const title=decisionSummary || (collectionIssue?'取证未闭合，尚无事件级结论':report.description); $('#resultSummary').innerHTML=report.status ? `<div class="report-description">${esc(title)}</div><div class="report-detail">${esc(review?.summary || report.detail || '')}</div>${reviewPlanSummary(review)}${relationSummary(report)}<details class="stored-result"><summary>查看本轮存档说明</summary><p>${esc(report.description)}</p><p>${esc(report.detail || '')}</p></details><div class="report-delivery">回写：${badge(run.delivery?.state || run.delivery_state,deliveryLabels)} · 存档结论保持原样，原因说明仅解释本轮记录。</div>`:'<p class="muted">任务尚未定版。</p>'; const control=$('#controlButton'); if(['queued','running','paused'].includes(run.state)){control.hidden=false;control.textContent=run.control_state==='paused' || run.state==='paused'?'恢复执行':'暂停执行';}else control.hidden=true; renderTimeline(); renderPropositions(); renderPlan(); }
 function renderTimeline(){ const events=state.run?.events || []; $('#timeline').innerHTML=events.length?events.slice(-10).reverse().map((event)=>`<li><div><strong>${esc(stageLabels[event.stage || 'run'] || event.stage || '运行')} / ${esc(eventLabels[event.event] || event.event || '')}</strong><small>${esc(event.status||'')} ${event.elapsed_ms?`· ${event.elapsed_ms} ms`:''}</small></div></li>`).join(''):'<li><div><strong>等待执行</strong><small>worker 领取后显示阶段</small></div></li>'; }
 function renderPropositions(){
   const props=state.report?.propositions || [];
@@ -111,8 +157,50 @@ function renderPropositions(){
   $('#findingList').innerHTML=findings.map(finding=>`<li><strong>${esc(kinds[finding.finding_classification]||'问题线索')}</strong> · ${esc(propositionName(finding.code))}<div>${esc(finding.detail||'')}</div><button type="button" class="text-button proposition-evidence" data-refs="${esc((finding.evidence_refs||[]).join(','))}">查看引用 →</button></li>`).join('');
   const gaps=state.report?.coverage_gaps||[];
   $('#gapsList').innerHTML=gaps.length?gaps.map(gap=>`<li>${esc(reasonText(gap))}</li>`).join(''):'<li>本轮没有记录覆盖缺口。</li>';
+  renderTriggerReview();
+  renderSourceRelations();
 }
-async function loadFiles(page=state.files.page){ if(!state.runId)return; const current=state.request; const sequence=state.files.sequence=(state.files.sequence||0)+1; state.files.page=page; try { const {body}=await api(`/v1/runs/${encodeURIComponent(state.runId)}/files?offset=${page*20}&limit=20`); if(current!==state.request || sequence!==state.files.sequence)return; state.files.total=body.total||0; $('#fileCount').textContent=`${state.files.total} 个`; $('#filePageInfo').textContent=pageInfo(page*20,body.items?.length||0,state.files.total); $('#filePrev').disabled=page===0; $('#fileNext').disabled=(page+1)*20>=state.files.total; $('#fileRows').innerHTML=(body.items||[]).map((file)=>`<tr><td>${esc(file.original_name||file.file_id)}<small>${esc(file.file_id)}</small></td><td>${esc(roleLabels[file.source_role]||file.source_role||'—')}</td><td class="mono">${esc((file.content_hash||'').slice(0,16))}…</td><td><button type="button" class="text-button preview-file" data-file-id="${esc(file.file_id)}" data-file-name="${esc(file.original_name || file.file_id)}">原文 →</button></td></tr>`).join('')||'<tr><td colspan="4" class="empty-cell">没有文件。</td></tr>'; } catch(error){ $('#fileRows').innerHTML=`<tr><td colspan="4" class="empty-cell">${esc(error.message)}</td></tr>`; } }
+function renderTriggerReview(){
+  let section=$('#triggerReview');
+  if(!section){section=document.createElement('div');section.id='triggerReview';section.className='source-relations';$('#detail-propositions').append(section);}
+  const review=state.report?.trigger_review;
+  section.hidden=!review;
+  if(!review)return;
+  const profile=review.threshold_profiles||{}, comparison=review.threshold_comparison||{}, monitoring=review.monitoring_candidates||{};
+  const tech={ground_sound:'地音',microseismic:'微震',stress:'应力',drill_cuttings:'钻屑',electromagnetic:'电磁辐射',multi_parameter:'多参量综合'};
+  const rowLabels={single:'单份资料',duplicate:'重复来源',equivalent_versions:'条件相近的多份资料',conflict_or_parallel:'条件不同，适用版本待核',unresolved_extraction:'等级条件未完整提取'};
+  const versions=(comparison.comparisons||[]).map(row=>`<li><strong>${esc(tech[row.technology]||row.technology)}</strong>：${esc(rowLabels[row.classification]||row.classification)} · ${esc(row.document_ids?.length||0)} 份文件</li>`).join('');
+  const rules=(profile.rows||[]).slice(0,30).map(row=>`<li>${esc(tech[row.technology]||row.technology)} · ${esc(row.grade_label)}：${esc(row.condition_text?.slice(0,260)||'条件未读取')}${row.evidence_refs?.[0]?` <button type="button" class="text-button" data-ref="${esc(row.evidence_refs[0])}">查看原文</button>`:''}<small>状态：${esc(row.status==='candidate_rule_text'?'待核对的等级原文':'条件不完整')}</small></li>`).join('');
+  const observations=(monitoring.candidates||[]).slice(0,20).map(row=>`<li>${esc(row.technology||'监测技术待确认')} · ${esc(row.probe_id||'探头待确认')} · ${esc(row.location||row.workface||'地点待确认')} · ${esc(row.dev_value??row.value??'数值待确认')}${esc(row.unit||'')} · ${esc(row.sample_time||row.shift_id||'时段待确认')}${row.source?.evidence_id?` <button type="button" class="text-button" data-ref="${esc(row.source.evidence_id)}">查看来源</button>`:''}</li>`).join('');
+  const pairs=(review.adjacent_probe_groups?.groups||[]).slice(0,12).map(group=>`<li>${esc(group.workface)} · ${esc(group.location)} · ${esc(group.probe_ids?.join('、'))} · ${esc(group.time_key?.join?.(' / ')||group.time_key||'时段待确认')}</li>`).join('');
+  section.innerHTML=`<h3>触发证据核对</h3><p class="muted">等级按本轮指标原文保留；监测值与同地点双探头仍是候选，未自动生成触发结论。</p><details><summary>指标版本与等级 · ${esc(profile.documents?.length||0)} 份</summary><ul class="gaps-list">${versions||'<li>尚无可比较的等级条目。</li>'}${rules}</ul></details><details><summary>日报监测候选 · ${esc(monitoring.candidates?.length||0)} 条</summary><ul class="gaps-list">${observations||'<li>尚无可定位的监测候选。</li>'}</ul>${monitoring.candidates?.length>20?'<p class="muted">这里只展示前20条，完整候选可导出结果查看。</p>':''}</details><details><summary>同地点双探头候选 · ${esc(review.adjacent_probe_groups?.groups?.length||0)} 组</summary><ul class="gaps-list">${pairs||'<li>本轮没有可证明同地点同时间的双探头记录。</li>'}</ul></details>`;
+}
+function renderSourceRelations(){
+  let section=$('#sourceRelations');
+  if(!section){section=document.createElement('div');section.id='sourceRelations';section.className='source-relations';$('#detail-propositions').append(section);}
+  const audit=state.report?.source_relations, rows=audit?.relations||[];
+  section.hidden=!audit;
+  const labels={duplicate:'重复来源',parallel:'并列资料',version_candidate:'版本待比对',fact_conflict:'事实冲突'};
+  const fields={status:'执行状态',value:'临界指标值',hazard_confirmed:'危险确认',immediate:'立即处置',route_conforms:'撤人路线',acceptance_passed:'验收结果'};
+  const values={done:'已实施',not_done:'明确未实施',true:'是',false:'否'};
+  section.innerHTML='<h3>资料关系与冲突依据</h3><p class="muted">文件日期、类别相同可以有多份资料。版本提示不自动代表业务事实冲突。</p>'+rows.map(row=>{
+    const names=new Map((row.files||[]).map(file=>[file.file_id,file.original_name||file.file_id]));
+    const files=(row.files||[]).map(file=>`<li><button type="button" class="text-button preview-file" data-file-id="${esc(file.file_id)}" data-file-name="${esc(file.original_name)}">${esc(file.original_name||file.file_id)}</button><small class="muted">填报日期：${esc(file.report_date||'未登记')} · 文件名期间线索：${esc((file.filename_period_hints||[]).join('、')||'未提取')} · SHA256 ${esc((file.content_hash||'').slice(0,16))}…</small></li>`).join('');
+    const differences=(row.differences||[]).map(item=>`<li>${esc(fields[row.context?.field]||row.context?.field)}：${esc(values[String(item.value)]||String(item.value))} ${esc(item.unit||'')}</li>`).join('');
+    const citations=(row.citations||[]).map(item=>`<div class="relation-line"><button class="text-button" type="button" data-ref="${esc(item.evidence_id)}">${esc(names.get(item.file_id)||item.file_id)} · ${esc(locatorText(item.locator))}</button><blockquote class="source-quote">${esc(item.quote)}</blockquote></div>`).join('');
+    const affected=(row.affected_propositions||[]).map(prop=>propositionName(prop.code)).join('、');
+    const context=row.context||{},when=context.time||(context.valid_from?`${context.valid_from} 至 ${context.valid_to}`:'时间未登记');
+    return `<details${row.kind==='fact_conflict'?' open':''}><summary>${esc(labels[row.kind]||row.kind)} · ${(row.files||[]).length} 份${row.blocks_verdict?' · 影响命题判定':''}</summary><p>${esc(row.reason)}</p>${row.context?`<p>${esc(context.workface)} · 事件 ${esc(context.event_id)} · ${esc(when)}${context.action?` · ${esc(propositionName(context.action))}`:''}</p>`:''}${affected?`<p>受影响命题：${esc(affected)}</p>`:''}<ul>${files}${differences}</ul>${citations}</details>`;
+  }).join('');
+}
+function fileOutcomeLabel(fileId){
+  const item=(state.reviewPlan?.file_outcomes?.items||[]).find(row=>row.file_id===fileId);
+  if(!item)return '';
+  const labels={business_issue:'有问题线索',processing_failed:'处理失败',unfinished:'未完成',candidate_review:'识别候选待核验',needs_recognition:'识别未完整',needs_search:'待命题检索',unprocessed:'未处理',processed:'已处理'};
+  const problems=(item.failures||[]).map(failure=>(failure.page?'第'+failure.page+'页：':'')+reasonText(failure.reason)).join('；');
+  return `<small class="file-outcome-label">${esc(labels[item.status]||item.status)}${problems?' · '+esc(problems):''}</small>`;
+}
+async function loadFiles(page=state.files.page){ if(!state.runId)return; const current=state.request; const sequence=state.files.sequence=(state.files.sequence||0)+1; state.files.page=page; try { const {body}=await api(`/v1/runs/${encodeURIComponent(state.runId)}/files?offset=${page*20}&limit=20`); if(current!==state.request || sequence!==state.files.sequence)return; state.files.total=body.total||0; $('#fileCount').textContent=`${state.files.total} 个`; $('#filePageInfo').textContent=pageInfo(page*20,body.items?.length||0,state.files.total); $('#filePrev').disabled=page===0; $('#fileNext').disabled=(page+1)*20>=state.files.total; $('#fileRows').innerHTML=(body.items||[]).map((file)=>`<tr><td>${esc(file.original_name||file.file_id)}<small>${esc(file.file_id)}</small>${fileOutcomeLabel(file.file_id)}</td><td>${esc(roleLabels[file.source_role]||file.source_role||'—')}</td><td class="mono">${esc((file.content_hash||'').slice(0,16))}…</td><td><button type="button" class="text-button preview-file" data-file-id="${esc(file.file_id)}" data-file-name="${esc(file.original_name || file.file_id)}">原文 →</button></td></tr>`).join('')||'<tr><td colspan="4" class="empty-cell">没有文件。</td></tr>'; } catch(error){ $('#fileRows').innerHTML=`<tr><td colspan="4" class="empty-cell">${esc(error.message)}</td></tr>`; } }
 function updateQuestionPropositions(){
   const selected=$('#questionProposition').value,props=state.report?.propositions||[];
   $('#questionProposition').innerHTML='<option value="">不限命题</option>'+[...new Set(props.map(prop=>prop.code).filter(Boolean))].map(code=>`<option value="${esc(code)}">${esc(propositionName(code))}</option>`).join('');
@@ -321,7 +409,7 @@ async function poll() {
       const {body}=await api(`/v1/runs/${encodeURIComponent(runId)}/summary`);
       if(requestId!==state.request)return;
       state.run={...state.run,...body};
-      if(body.result_status!==oldStatus){state.report=(await api(`/v1/runs/${encodeURIComponent(runId)}/report`)).body.result;}
+      if(body.result_status!==oldStatus){state.report=(await api(`/v1/runs/${encodeURIComponent(runId)}/report`)).body.result;state.reviewPlan=(await api(`/v1/runs/${encodeURIComponent(runId)}/explanation`).catch(()=>({body:null}))).body;}
       await loadProgress(requestId);renderRun();updateQuestionPropositions();
       if(!$('#detail-files').hidden)await loadFiles();
       if(!$('#detail-candidates').hidden)await loadCandidates();
@@ -423,7 +511,7 @@ function bind() {
   });
   document.addEventListener('click',(event)=>{
     const row=event.target.closest('#taskRows tr[data-run-id]'); if(row){loadRun(row.dataset.runId);return;}
-    const preview=event.target.closest('.preview-file'); if(preview){previewFile(preview.dataset.fileId,preview.dataset.fileName);return;}
+    const preview=event.target.closest('.preview-file'); if(preview){previewFile(preview.dataset.fileId,preview.dataset.fileName,preview.dataset.page?Number(preview.dataset.page):undefined);return;}
     const evidence=event.target.closest('.evidence-item'); if(evidence){inspectEvidence(state.evidenceRows[Number(evidence.dataset.evidenceIndex)],evidence);return;}
     const ref=event.target.closest('[data-ref]'); if(ref){openReference(ref.dataset.ref);return;}
     const prop=event.target.closest('.proposition-evidence'); if(prop){openReference(prop.dataset.refs?.split(',')[0]);return;}

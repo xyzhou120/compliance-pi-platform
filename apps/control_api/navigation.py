@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from difflib import unified_diff
+from .domain.source_relations import relation_explanation
 
 
 _RESULT_LABELS = {"pass": "通过", "no_pass": "不通过", "pending": "待核验",
@@ -205,6 +206,19 @@ def answer_question(run: dict, snapshot: dict, question: str, *, proposition_id:
                                f"{p.get('detail') or ''}" for p in propositions)
             refs = _refs(propositions)
             kind = "proposition_record"
+        elif any(term in question for term in ("冲突", "版本")) and (result.get("source_relations") or result.get("version_conflicts")):
+            answer = relation_explanation(result)
+            if not answer:
+                if result.get("source_relations"):
+                    answer = "本轮没有记录可阻断命题的字段级事实冲突。报告日期和资料类别相同的多份文件按并列资料保留；若需选择版本，系统只提供比对提示，不自动认定最新版。"
+                else:
+                    answer = "该历史运行按旧策略记录了来源版本冲突，未保存字段级矛盾明细，不能据此确认业务内容冲突。需使用新策略创建新执行进行核对。"
+            elif "冲突" in question and not any(row.get("kind") == "fact_conflict" and row.get("blocks_verdict")
+                    for row in result["source_relations"].get("relations", [])):
+                answer = "本轮未记录阻断命题的事实冲突。" + answer
+            refs = {ref for row in (result.get("source_relations") or {}).get("relations", [])
+                    if row.get("kind") == "fact_conflict" for ref in row.get("evidence_refs", [])}
+            kind = "source_relation_record"
         elif any(term in question for term in ("版本", "来源", "原文", "文件")):
             files = source.get("files", [])
             answer = "本轮冻结来源：" + "；".join(f"{f.get('original_name') or f.get('file_id')}，"
@@ -218,8 +232,29 @@ def answer_question(run: dict, snapshot: dict, question: str, *, proposition_id:
             answer = f"本轮记录状态：{_RESULT_LABELS.get(status, status or '尚未定版')}。"
             if result.get("description"):
                 answer += str(result["description"]) + "。"
+            if result.get("detail"):
+                answer += str(result["detail"]) + " "
+            explanation = relation_explanation(result)
+            if explanation and explanation not in answer:
+                answer += explanation
             answer += "未闭合项：" + "；".join(str(g) for g in gaps[:20]) if gaps else "当前记录未列出缺口；这不构成额外的完整性证明。"
             refs = _refs([result, *all_props])
+            if any(term in question for term in ("为什么", "复核", "原因")):
+                from .review_plan import explain_frozen_run
+                review = explain_frozen_run({**run, "snapshot": source})
+                answer = f"本轮记录状态：{_RESULT_LABELS.get(status, status or '尚未定版')}。"
+                if result.get("detail"):
+                    answer += str(result["detail"]) + " "
+                answer += review["summary"]
+                for action in review["actions"][:6]:
+                    positions = []
+                    for target in action["targets"][:2]:
+                        units = "、".join(unit.replace("page:", "第") + ("页" if unit.startswith("page:") else "") for unit in target["units"][:4])
+                        positions.append(f"{target['file_name']}（{units}）")
+                    answer += f"\n{action['title']}：{action['reason']} " + "；".join(positions) + " 下一步：" + action["next_step"]
+                explanation = relation_explanation(result)
+                if explanation:
+                    answer += "\n" + explanation
         else:
             answer = "目前支持查询运行状态与缺口、具体命题、冻结来源版本和新资料范围。该问题尚无可直接引用的记录答案。"
             limitations.append("没有对任意自然语言问题进行业务推断")

@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import threading
 import json
+import re
 from pathlib import Path
 from uuid import uuid4
 from pydantic import ValidationError
@@ -15,7 +16,7 @@ from .documents import get_coverage, provider_evidence, render_pages, search_evi
 from .coverage import audit_coverage
 from .providers import ProviderPool, recognize_pages
 from .settings import Settings
-from .store import NotFound, Conflict
+from .store import NotFound, Conflict, RunPaused, StaleLease
 from .validator import CandidateRejected, validate_candidate
 
 
@@ -71,6 +72,12 @@ class EvidenceService:
                 coverage = {key: value for key, value in coverage.items() if key[0] != fid}
                 coverage.update({(item.get("file_id", fid), item.get("unit_id")): {**item, "file_id": item.get("file_id", fid)} for item in output.get("coverage", [])})
                 parsed_gaps.extend(output.get("coverage_gaps", []))
+            elif unit.get("kind") == "recognize_page" and unit.get("state") == "succeeded":
+                output = unit.get("output") or {}
+                for item in output.get("coverage", []):
+                    scope = (item.get("file_id"), item.get("unit_id"))
+                    coverage[scope] = {**item, "file_id": item.get("file_id", scope[0])}
+                parsed_gaps.extend(output.get("gaps", []))
         result["coverage"] = list(coverage.values())
         result["coverage_gaps"] = [gap for gap in result.get("coverage_gaps", []) if not any(str(gap).startswith(str(fid) + "/") for fid in parsed_files)] + parsed_gaps
         for unit in run.get("work_units", []):
@@ -100,9 +107,17 @@ class EvidenceService:
         if worker_id and fence is not None:
             # A receipt covers only an exhaustively returned query page range.
             selected = [unit for unit in snapshot.get("coverage", []) if (not file_id or unit.get("file_id") == file_id)]
+            unit_hits = {}
+            for item in result["items"]:
+                unit_id = item.get("unit_id") or (f"page:{item['locator']['page']}" if (item.get("locator") or {}).get("page") else "document")
+                for fid in set([item.get("file_id")] + item.get("source_file_ids", [])):
+                    if fid:
+                        key = f"{fid}/{unit_id}"
+                        unit_hits[key] = unit_hits.get(key, 0) + 1
             receipt = {"query_hash": self.store.digest(query), "file_id": file_id, "offset": offset, "limit": limit,
                        "total": result["total"], "hit_count": result["total"], "count": len(result["items"]),
                        "index_revision": self.store.digest(sorted(item["evidence_id"] for item in snapshot["evidence"])), "complete": False,
+                       "unit_hit_counts": unit_hits,
                        "units": [{"file_id": unit["file_id"], "unit_id": unit["unit_id"]} for unit in selected]}
             pages = [item for item in run.get("searches", []) if all(item.get(key) == receipt[key] for key in ("query_hash", "file_id", "index_revision", "total"))] + [receipt]
             waterline = 0
@@ -110,12 +125,56 @@ class EvidenceService:
                 if page["offset"] <= waterline:
                     waterline = max(waterline, page["offset"] + page.get("count", 0))
             receipt["complete"] = waterline >= receipt["total"]
+            if receipt["complete"]:
+                totals = {}
+                for page in pages:
+                    for key, count in page.get("unit_hit_counts", {}).items():
+                        totals[key] = totals.get(key, 0) + count
+                receipt["unit_hit_counts"] = totals
             receipt["search_id"] = self.store.digest(receipt)
             self.store.save_records(run_id, worker_id, fence, "search", [receipt])
         result["unindexed_files"] = sorted({unit["file_id"] for unit in snapshot.get("coverage", []) if unit.get("state") == "not_indexed"})
         return result
 
-    def _unit(self, run_id, worker_id, fence, kind, inputs, operation):
+    def search_exhaustive(self, run_id: str, queries, *, worker_id, fence, deadline=None, limit=100) -> dict:
+        """Persist complete pagination receipts against the current evidence index."""
+        if not isinstance(queries, (list, tuple)):
+            raise ValueError("queries must be a sequence")
+        run = self._run(run_id)
+        snapshot = self.snapshot(run)
+        revision = self.store.digest(sorted(item["evidence_id"] for item in snapshot["evidence"]))
+        units = [{"file_id": unit["file_id"], "unit_id": unit["unit_id"]} for unit in snapshot.get("coverage", [])]
+        completed = 0
+        for query in dict.fromkeys(queries):
+            offset, unit_hits = 0, {}
+            while True:
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise TimeoutError("search_deadline")
+                page = search_evidence(snapshot, query, offset=offset, limit=limit)
+                total, count = int(page.get("total", 0)), len(page.get("items", []))
+                completed += 1
+                for item in page["items"]:
+                    unit_id = item.get("unit_id") or (f"page:{item['locator']['page']}" if (item.get("locator") or {}).get("page") else "document")
+                    for fid in set([item.get("file_id")] + item.get("source_file_ids", [])):
+                        if fid:
+                            key = f"{fid}/{unit_id}"
+                            unit_hits[key] = unit_hits.get(key, 0) + 1
+                if offset + count >= total:
+                    break
+                if count <= 0:
+                    raise Conflict("search_pagination_stalled")
+                offset += count
+            current = self.snapshot(self._run(run_id))
+            if self.store.digest(sorted(item["evidence_id"] for item in current["evidence"])) != revision:
+                raise Conflict("search_index_changed")
+            receipt = {"query_hash": self.store.digest(query), "file_id": None, "offset": 0, "limit": limit,
+                       "total": total, "count": total, "hit_count": total, "index_revision": revision,
+                       "complete": True, "units": units, "unit_hit_counts": unit_hits}
+            receipt["search_id"] = self.store.digest(receipt)
+            self.store.save_records(run_id, worker_id, fence, "search", [receipt])
+        return {"queries": list(dict.fromkeys(queries)), "pages": completed}
+
+    def _unit(self, run_id, worker_id, fence, kind, inputs, operation, *, deadline=None):
         run = self._run(run_id)
         inputs = {**inputs, "rule_revision": run["rule_revision"]}
         with self.mutation_lock:
@@ -141,8 +200,10 @@ class EvidenceService:
             permit = None
             if kind == "parse_file":
                 while permit is None:
+                    if deadline is not None and time.monotonic() >= deadline:
+                        raise TimeoutError("collection_deadline")
                     permit = self.store.acquire_permit(run_id, worker_id, fence, "document", unit["work_unit_id"],
-                        limit=self.settings.max_document_concurrency, ttl=self.settings.task_timeout + 30)
+                        limit=self.settings.max_document_concurrency, ttl=self.settings.lease_seconds + 30)
                     if permit is None:
                         time.sleep(.05)
             try:
@@ -150,16 +211,29 @@ class EvidenceService:
             finally:
                 if permit:
                     self.store.release_permit(run_id, worker_id, fence, "document", permit_id=permit)
+            failed_states = {"failed", "provider_failed"}
+            if kind == "parse_file" and any(item.get("state") in failed_states for item in result.get("coverage", [])):
+                result["unit_failed"] = True
+                result.setdefault("error_code", next((str(item.get("reason")) for item in result.get("coverage", [])
+                                                       if item.get("state") in failed_states and item.get("reason")), "parse_file_failed"))
             with self.mutation_lock:
                 if result.get("evidence"):
                     self.store.save_evidence(run_id, worker_id, fence, result["evidence"])
-                self.store.finish_work_unit(run_id, worker_id, fence, unit["work_unit_id"], output=result, error="provider_failed" if result.get("unit_failed") else None)
+                self.store.finish_work_unit(run_id, worker_id, fence, unit["work_unit_id"], output=result,
+                    error=result.get("error_code", "provider_failed") if result.get("unit_failed") else None)
             return {**result, "work_unit_id": unit["work_unit_id"], "reused": False}
+        except (StaleLease, RunPaused):
+            raise
         except Exception as exc:
-            self.store.finish_work_unit(run_id, worker_id, fence, unit["work_unit_id"], error=type(exc).__name__)
+            message = str(exc)
+            code = message if re.fullmatch(r"[a-z][a-z0-9_]{1,79}", message) else type(exc).__name__
+            gap = {"file_id": inputs.get("file_id"), "page": inputs.get("page"), "stage": kind, "reason": code}
+            failed = {"file_id": inputs.get("file_id"), "page": inputs.get("page"), "evidence": [], "coverage": [],
+                      "attempts": [], "gaps": [gap], "coverage_gaps": [gap], "unit_failed": True, "error_code": code}
+            self.store.finish_work_unit(run_id, worker_id, fence, unit["work_unit_id"], output=failed, error=code)
             raise
 
-    def parse(self, run_id, file_id, *, worker_id, fence):
+    def parse(self, run_id, file_id, *, worker_id, fence, deadline=None):
         run = self._run(run_id)
         snapshot = self.snapshot(run)
         file = next((item for item in snapshot.get("files", []) if item["file_id"] == file_id), None)
@@ -170,14 +244,39 @@ class EvidenceService:
         total_pages = sum(int(item.get("page_count") or 1) for item in snapshot.get("files", []) if item["file_id"] in processed | {file_id})
         if total_pages > min(budget, self.settings.max_total_pages):
             raise ValueError("page_budget_exhausted")
-        return self._unit(run_id, worker_id, fence, "parse_file", {"file_id": file_id, "content_hash": file["content_hash"], "page_count": int(file.get("page_count") or 1), "parser_revision": snapshot.get("parser_revision")},
-                          lambda: parse_frozen_file(snapshot, file_id, {**self.settings.document_settings(), "storage_dir": str(self._cache_root(snapshot))}))
+        parse_settings = {**self.settings.document_settings(), "storage_dir": str(self._cache_root(snapshot)),
+                          "isolate_native_parse": bool(self.settings.host_collection_sweep)}
+        if deadline is not None:
+            parse_settings["parse_timeout"] = max(0.2, min(120.0, deadline - time.monotonic()))
+        def parse_operation():
+            if deadline is not None:
+                parse_settings["parse_timeout"] = max(0.2, min(120.0, deadline - time.monotonic()))
+            return parse_frozen_file(snapshot, file_id, parse_settings)
+        return self._unit(run_id, worker_id, fence, "parse_file", {"file_id": file["file_id"], "content_hash": file["content_hash"], "page_count": int(file.get("page_count") or 1), "parser_revision": snapshot.get("parser_revision")},
+                          parse_operation, deadline=deadline)
 
-    def inspect_documents(self, run_id, file_ids, *, worker_id, fence):
+    def inspect_documents(self, run_id, file_ids, *, worker_id, fence, deadline=None):
         if not isinstance(file_ids, list) or not 1 <= len(file_ids) <= 32 or any(not isinstance(fid, str) for fid in file_ids):
             raise ValueError("file_ids must contain 1 to 32 file identifiers")
+        selected = list(dict.fromkeys(file_ids))
+        outputs = [None] * len(selected)
+        def one(index, fid):
+            try:
+                return self.parse(run_id, fid, worker_id=worker_id, fence=fence, deadline=deadline)
+            except (RunPaused, StaleLease):
+                raise
+            except Exception as exc:
+                message = str(exc)
+                code = message if re.fullmatch(r"[a-z][a-z0-9_]{1,79}", message) else type(exc).__name__
+                gap = {"file_id": fid, "reason": "parse_file_failed", "error": code}
+                self.store.save_records(run_id, worker_id, fence, "gap", [gap])
+                return {"file_id": fid, "evidence": [], "coverage": [],
+                        "coverage_gaps": [gap],
+                        "unit_failed": True, "error": type(exc).__name__}
         with ThreadPoolExecutor(max_workers=self.settings.max_document_concurrency) as pool:
-            outputs = list(pool.map(lambda fid: self.parse(run_id, fid, worker_id=worker_id, fence=fence), list(dict.fromkeys(file_ids))))
+            futures = {pool.submit(one, index, fid): index for index, fid in enumerate(selected)}
+            for future in as_completed(futures):
+                outputs[futures[future]] = future.result()
         return {"items": outputs, "total": len(outputs)}
 
     def audit(self, run_id, *, propositions=(), frozen=True):
@@ -277,11 +376,20 @@ class EvidenceService:
 
     def page(self, run_id: str, file_id: str, page: int) -> dict:
         snapshot = self.snapshot(self._run(run_id))
-        if page < 1 or not any(file["file_id"] == file_id for file in snapshot.get("files", [])):
+        file = next((item for item in snapshot.get("files", []) if item["file_id"] == file_id), None)
+        if page < 1 or file is None:
             raise NotFound("file/page outside frozen run")
         evidence = [record for record in snapshot["evidence"] if record.get("file_id") == file_id and record.get("locator", {}).get("page") == page]
         coverage = [record for record in snapshot.get("coverage", []) if record.get("file_id") == file_id and record.get("unit_id") == f"page:{page}"]
         if not evidence and not coverage:
+            if str(file.get("format", "")).lower() != "pdf":
+                return {"file_id": file_id, "page": page, "evidence": [], "coverage": [],
+                        "availability": "document_units", "reason": "use_document_parser",
+                        "instruction": "Use parse_file/inspect_documents, then search or get_evidence; this format has document/sheet/row units, not PDF pages."}
+            if type(file.get("page_count")) is int and page <= file["page_count"]:
+                return {"file_id": file_id, "page": page, "evidence": [], "coverage": [],
+                        "availability": "not_indexed", "reason": "page_not_indexed",
+                        "instruction": "Parse this file before searching, or request this selected page with recognize_pages."}
             raise NotFound("page outside frozen run")
         return {"file_id": file_id, "page": page, "evidence": evidence, "coverage": coverage}
 
@@ -296,7 +404,7 @@ class EvidenceService:
         run = self._run(run_id)
         return {"run_id": run_id, "mine_id": run["mine_id"], "item_code": run["item_code"], "state": run.get("state"), "plan": run.get("plan", {}), "coverage": self.coverage(run_id)}
 
-    def recognize(self, run_id: str, body: dict, *, worker_id: str, fence: int) -> dict:
+    def recognize(self, run_id: str, body: dict, *, worker_id: str, fence: int, deadline=None) -> dict:
         run = self._run(run_id)
         self.store.checkpoint(run_id, worker_id, fence, {"stage": "recognition", "event": "requested"})
         pages = body.get("pages") if isinstance(body, dict) else None
@@ -306,11 +414,17 @@ class EvidenceService:
             raise ValueError("invalid page selection")
         snapshot = self.snapshot(run)
         provider_settings = self.settings.provider_settings()
+        if deadline is not None:
+            provider_settings["timeout"] = max(0.1, min(provider_settings.get("timeout", 120), deadline - time.monotonic()))
+            if provider_settings.get("fallback_provider"):
+                provider_settings["fallback_provider"]["timeout"] = provider_settings["timeout"]
         if not provider_settings.get("endpoint"):
             gap = {"reason": "provider_endpoint_missing", "pages": pages}
             self.store.save_records(run_id, worker_id, fence, "gap", [gap])
             return {"evidence": [], "attempts": [], "gaps": [gap]}
         def cancelled():
+            if deadline is not None and time.monotonic() >= deadline:
+                return True
             try:
                 self.store.checkpoint(run_id, worker_id, fence)
                 return False
@@ -327,10 +441,15 @@ class EvidenceService:
                     if cancelled():
                         raise RuntimeError("provider_cancelled")
                     permit = service.store.acquire_permit(run_id, worker_id, fence, "ocr", request_id,
-                        limit=service.settings.provider_concurrency, ttl=service.settings.task_timeout + 30)
+                        limit=service.settings.provider_concurrency, ttl=service.settings.lease_seconds + 30)
                     if permit is None:
                         time.sleep(.05)
                 try:
+                    if deadline is not None:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise TimeoutError("collection_deadline")
+                        kwargs["timeout"] = max(0.1, min(float(kwargs.get("timeout", remaining)), remaining))
                     value = service.provider_pool.call(*args, **kwargs)
                     value["queue_ms"] = value.get("queue_ms", 0) + round((time.monotonic() - queued) * 1000, 2) - value.get("elapsed_ms", 0)
                     return value
@@ -341,18 +460,37 @@ class EvidenceService:
             if file is None:
                 raise NotFound("file outside frozen run")
             def perform():
-                rendered = render_pages(snapshot, [page], max_pages=1)
+                render_timeout = None if deadline is None else max(0.2, min(45.0, deadline - time.monotonic()))
+                rendered = render_pages(snapshot, [page], max_pages=1, timeout=render_timeout)
                 result = recognize_pages(rendered["images"], settings={**provider_settings, "cache_dir": str(self._cache_root(snapshot) / "recognition"), "cancelled": cancelled}, pool=LedgerPool())
                 records = provider_evidence(snapshot, result["candidates"])
                 for record in records:
                     record.update(mine_code=run["mine_id"], source_system=run["source_system"], snapshot_id=snapshot["snapshot_id"])
                 gaps = rendered["errors"] + result["errors"]
+                coverage = [{"file_id": page["file_id"], "unit_id": f"page:{page['page']}",
+                             "state": "readable" if records else "unreadable",
+                             "reason": "external_recognition_candidate" if records else "recognition_no_candidate"}]
                 self.store.checkpoint(run_id, worker_id, fence, {"stage": "recognition", "event": "finished", "attempts": result["attempts"], "evidence_count": len(records)})
-                return {"evidence": records, "attempts": result["attempts"], "gaps": gaps, "unit_failed": bool(gaps and not records)}
+                return {"evidence": records, "coverage": coverage, "attempts": result["attempts"], "gaps": gaps, "unit_failed": bool(gaps and not records),
+                        "error_code": str(gaps[0].get("reason") or gaps[0].get("error") or "provider_failed") if gaps and not records else None}
             profile = {key: value for key, value in provider_settings.items() if key not in {"authorization_env", "cancelled"}}
             return self._unit(run_id, worker_id, fence, "recognize_page", {**page, "content_hash": file["content_hash"], "profile_revision": self.store.digest(profile)}, perform)
+        outputs = [None] * len(pages)
+        def safe_one(index, page):
+            try:
+                return one(page)
+            except (RunPaused, StaleLease):
+                raise
+            except Exception as exc:
+                gap = {"file_id": page.get("file_id"), "page": page.get("page"),
+                       "reason": "recognize_page_failed", "error": type(exc).__name__}
+                self.store.save_records(run_id, worker_id, fence, "gap", [gap])
+                return {"evidence": [], "attempts": [], "gaps": [gap],
+                        "unit_failed": True}
         with ThreadPoolExecutor(max_workers=self.settings.provider_concurrency) as pool:
-            outputs = list(pool.map(one, pages))
+            futures = {pool.submit(safe_one, index, page): index for index, page in enumerate(pages)}
+            for future in as_completed(futures):
+                outputs[futures[future]] = future.result()
         return {"evidence": [item for output in outputs for item in output["evidence"]],
                 "attempts": [item for output in outputs for item in output["attempts"]],
                 "gaps": [item for output in outputs for item in output["gaps"]],

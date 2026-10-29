@@ -5,7 +5,8 @@ import { Type } from "typebox";
 import { createHash } from "node:crypto";
 import { PermitPool } from "./scheduler.mjs";
 
-const defaults = { maxToolCalls: Number(process.env.PI_MAX_TOOL_CALLS || 80), deadlineMs: Number(process.env.PI_DEADLINE_MS || 1_800_000) };
+const defaults = { maxToolCalls: Number(process.env.PI_MAX_TOOL_CALLS || 80) };
+const modelRequestTimeoutMs = boundedInteger(process.env.PI_MODEL_REQUEST_TIMEOUT_MS, 120_000, 1_800_000);
 const runPool = new PermitPool(Number(process.env.MAX_MODEL_CONCURRENCY || 2));
 const toolPool = new PermitPool(Number(process.env.MAX_TOOL_CONCURRENCY || 4));
 const required = (name) => { const value = process.env[name]; if (!value?.trim()) throw new Error(`${name} is required`); return value.trim(); };
@@ -48,6 +49,16 @@ async function readJSON(response) {
 function boundedInteger(value, fallback, max) { const number = value === undefined ? fallback : Number(value); if (!Number.isInteger(number) || number < 1 || number > max) throw new Error(`budget must be an integer between 1 and ${max}`); return number; }
 function boundedRetries(value) { const number = value === undefined ? 2 : Number(value); if (!Number.isInteger(number) || number < 0 || number > 5) throw new Error("retry count must be an integer between 0 and 5"); return number; }
 function safeErrorCode(error) { const value = String(error?.message || "tool_failed"); return /^(?:evidence_api_\d{3}|[a-z_]+)$/.test(value) ? value : "tool_failed"; }
+function compactSearchResult(result) {
+  if (!result || typeof result !== "object") return result;
+  return {
+    total: result.total, offset: result.offset, limit: result.limit, has_more: result.has_more,
+    items: (Array.isArray(result.items) ? result.items : []).map((item) => ({
+      evidence_id: item.evidence_id, file_id: item.file_id, unit_id: item.unit_id,
+      locator: item.locator, quote: String(item.quote || item.text || "").slice(0, 900),
+    })),
+  };
+}
 function usageTotals(messages) {
   return messages.filter(message => message.role === "assistant").reduce((sum, message) => {
     for (const key of ["input", "output", "cacheRead", "cacheWrite", "totalTokens"]) sum[key] = (sum[key] || 0) + Math.max(0, Number(message.usage?.[key]) || 0);
@@ -125,7 +136,7 @@ function toolsFor(client, state) {
     }
   };
   return [
-    { name: "search_evidence", label: "Search evidence", description: "Search only frozen evidence for the current run.", parameters: Type.Object({ query: Type.String(), file_id: Type.Optional(Type.String()), offset: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000 })), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })) }), executionMode: "parallel", execute: async (_id, args) => { count(); return textResult(JSON.stringify(boundedJSON(await tool("search_evidence", () => client.search(args.query, args.file_id, args.limit, args.offset), args))), { kind: "evidence_search" }); } },
+    { name: "search_evidence", label: "Search evidence", description: "Search only frozen evidence for the current run.", parameters: Type.Object({ query: Type.String(), file_id: Type.Optional(Type.String()), offset: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000 })), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })) }), executionMode: "parallel", execute: async (_id, args) => { count(); return textResult(JSON.stringify(compactSearchResult(await tool("search_evidence", () => client.search(args.query, args.file_id, args.limit, args.offset), args))), { kind: "evidence_search" }); } },
     { name: "get_evidence", label: "Get evidence", description: "Read one frozen evidence record by ID.", parameters: Type.Object({ evidence_id: Type.String() }), executionMode: "parallel", execute: async (_id, args) => { count(); return textResult(JSON.stringify(boundedJSON(await tool("get_evidence", () => client.getEvidence(args.evidence_id), args))), { kind: "evidence" }); } },
     { name: "open_page", label: "Open page", description: "Read one frozen page without exposing local filesystem paths.", parameters: Type.Object({ file_id: Type.String(), page: Type.Integer({ minimum: 1 }) }), executionMode: "parallel", execute: async (_id, args) => { count(); pages(); return textResult(JSON.stringify(boundedJSON(await tool("open_page", () => client.page(args.file_id, args.page), args))), { kind: "page" }); } },
     { name: "parse_file", label: "Parse file", description: "Request native parsing for one frozen file.", parameters: Type.Object({ file_id: Type.String() }), executionMode: "parallel", execute: async (_id, args) => { count(); return textResult(JSON.stringify(boundedJSON(await tool("parse_file", () => client.parseFile(args.file_id), args))), { kind: "parse" }); } },
@@ -141,13 +152,13 @@ function toolsFor(client, state) {
 }
 
 export async function runInspection(input, { signal } = {}) {
-  const startedAt = Date.now();
   const token = required("INTERNAL_TOKEN"); const evidenceUrl = required("EVIDENCE_API_URL");
   if (!input?.run_id || !input?.rule_revision || !input?.manifest_hash || !input?.work_owner || input?.work_fence === undefined) throw new Error("run_id, rule_revision, manifest_hash, work_owner and work_fence are required");
   const controller = new AbortController();
   const budgetPlan = input.budgets || input.plan?.executionPlan?.budgets || input.plan?.budgets || {};
-  let deadlineMs = Math.min(boundedInteger(input.deadline_ms ?? input.deadlineMs, defaults.deadlineMs, defaults.deadlineMs),
-    boundedInteger(budgetPlan.deadline_ms ?? budgetPlan.deadlineMs, defaults.deadlineMs, defaults.deadlineMs));
+  // No total inspection wall-clock cutoff. Per-call timeouts, budgets, lease
+  // heartbeats and explicit cancellation remain active.
+  const deadlineMs = null;
   const state = {
     toolCalls: 0, turns: 0, pages: 0, traceSequence: 0, traceEnabled: input.trace_enabled === true,
     traceGaps: [], toolAttempts: [], modelAttempts: [], modelQueueMs: 0, usage: {}, settlements: [], sharedPermits: false,
@@ -203,12 +214,17 @@ export async function runInspection(input, { signal } = {}) {
         }
       }
       state.modelQueueMs += Date.now() - queuedAt;
+      const requestTimeout = AbortSignal.timeout(modelRequestTimeoutMs);
+      const requestSignal = AbortSignal.any([controller.signal, ...(options.signal ? [options.signal] : []), requestTimeout]);
       const stream = models.streamSimple(selectedModel, context, {
-        ...options, fetch: observedFetch,
+        ...options, signal: requestSignal, fetch: observedFetch,
         maxRetries: state.maxModelRetries,
         maxRetryDelayMs: 5000, maxTokens: Math.min(model.maxTokens, remainingOutput),
       });
-      const settlement = stream.result().finally(async () => { release(); await releaseShared(); });
+      const settlement = stream.result().finally(async () => {
+        if (requestTimeout.aborted && !controller.signal.aborted) state.modelRequestTimedOut = true;
+        release(); await releaseShared();
+      });
       settlement.catch(() => {}); state.settlements.push(settlement);
       return stream;
     } catch (error) { release(); await releaseShared(); throw error; }
@@ -235,8 +251,6 @@ export async function runInspection(input, { signal } = {}) {
       if (state.budgetFailure) { controller.abort(new Error(state.budgetFailure)); agent.abort(); }
     }
   });
-  const expire = () => { controller.abort(new Error("inspection_deadline")); agent.abort(); };
-  let timer = setTimeout(expire, Math.max(0, deadlineMs - (Date.now() - startedAt)));
   const onAbort = () => { controller.abort(signal.reason || new Error("inspection_aborted")); agent.abort(); }; signal?.addEventListener("abort", onAbort, { once: true });
   try {
     if (signal?.aborted) onAbort();
@@ -246,12 +260,6 @@ export async function runInspection(input, { signal } = {}) {
     state.sharedPermits = frozenPlan.capabilities?.includes("shared_model_permits") === true;
     const hostPlan = frozenPlan.plan || {};
     const hostBudgets = hostPlan.executionPlan?.budgets || hostPlan.budgets || {};
-    const hostDeadline = hostBudgets.deadline_ms ?? hostBudgets.deadlineMs;
-    if (hostDeadline !== undefined) deadlineMs = Math.min(deadlineMs, boundedInteger(hostDeadline, deadlineMs, 86400000));
-    clearTimeout(timer);
-    const remainingMs = deadlineMs - (Date.now() - startedAt);
-    if (remainingMs <= 0) { expire(); controller.signal.throwIfAborted(); }
-    timer = setTimeout(expire, remainingMs);
     const hostRetries = hostBudgets.maxModelRetries ?? hostBudgets.max_model_retries ?? hostBudgets.maxRetries ?? hostBudgets.max_retries;
     if (hostRetries !== undefined) state.maxModelRetries = Math.min(state.maxModelRetries, boundedRetries(hostRetries));
     state.allowedTools = hostPlan.executionPlan?.allowedTools || hostPlan.allowedTools;
@@ -266,8 +274,12 @@ export async function runInspection(input, { signal } = {}) {
     await agent.prompt(prompt);
     await Promise.allSettled(state.settlements);
     controller.signal.throwIfAborted();
+    if (state.modelRequestTimedOut) throw new Error("model_request_timeout");
     if (state.budgetFailure && state.budgetFailure !== "page_budget_exhausted") throw new Error(state.budgetFailure);
-    if (agent.state.errorMessage) throw new Error("model_request_failed");
+    if (agent.state.errorMessage) {
+      const last = state.modelAttempts.at(-1);
+      throw new Error(`model_request_failed_${last?.status || "unknown"}`);
+    }
     const gaps = [...toolGaps, ...state.traceGaps, ...(state.toolCalls >= state.maxToolCalls ? [{ reason: "tool_budget_exhausted" }] : []), ...(state.budgetFailure ? [{ reason: state.budgetFailure }] : [])];
     return { candidates: state.candidates, gaps, attempts, toolAttempts: state.toolAttempts, modelAttempts: state.modelAttempts,
       modelQueueMs: state.modelQueueMs, toolCalls: state.toolCalls, pages: state.pages, modelTurns: state.turns,
@@ -275,7 +287,7 @@ export async function runInspection(input, { signal } = {}) {
       budgets: { maxToolCalls: state.maxToolCalls, maxPages: state.maxPages, maxInputTokens: state.maxInputTokens, maxOutputTokens: state.maxOutputTokens, maxModelTurns: state.maxModelTurns, maxModelRetries: state.maxModelRetries, deadlineMs },
       inputBudgetPolicy: "utf8_bytes_preflight_and_measured_usage",
     };
-  } finally { clearTimeout(timer); signal?.removeEventListener("abort", onAbort); await Promise.allSettled(state.settlements); }
+  } finally { signal?.removeEventListener("abort", onAbort); await Promise.allSettled(state.settlements); }
 }
 
 export function readiness() { const names = ["PI_MODEL_BASE_URL", "PI_MODEL_ID", "EVIDENCE_API_URL", "INTERNAL_TOKEN"]; const missing = names.filter((name) => !process.env[name]?.trim()); return { ready: missing.length === 0, missing, piAgentCore: "1.4.0", piAi: "1.4.0" }; }

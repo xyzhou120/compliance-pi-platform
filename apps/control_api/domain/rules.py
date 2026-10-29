@@ -12,6 +12,7 @@ from .rulebook import DEFAULT_RULEBOOK_VERSION
 from .grades import normalize_risk
 from .units import quantity as shared_quantity
 from .scope_checks import _parameter_matches
+from .source_relations import analyze_source_relations
 
 
 DETAILS_EFFECTIVE = date(2026, 9, 23)
@@ -209,9 +210,10 @@ class _Check:
     def prop(self, event, code, state, facts=(), detail="", article=None, rule_refs=None, classification=None, human_confirmation_required=False):
         refs = sorted({r for f in facts if f for r in f.get("evidence_refs", [])})
         original_state = state
-        if state in {"true", "false"} and set(refs) & self.version_conflicts:
+        if state in {"true", "false"} and _affected_by_conflict({"code": code, "event_id": event["event_id"],
+                "workface": event["workface"], "evidence_refs": refs}, _conflict_relations(self.snapshot)):
             state = "missing"
-            detail = (detail + "; " if detail else "") + "同一资料日期和类别存在不同内容版本，相关结论暂缓确定性判断"
+            detail = (detail + "; " if detail else "") + "同一事实存在互斥记录，相关命题待人工复核"
         self.used.update(refs)
         p = {"event_id": event["event_id"], "workface": event["workface"],
              "code": code, "state": state, "evidence_refs": refs, "detail": detail,
@@ -299,6 +301,12 @@ class _Check:
         return f
 
     def compare(self, event, measurement, fs):
+        if (self.item == "stop_work_unload"
+                and self.snapshot.get("monitoring_policy_mode") == "document_defined_v1"
+                and _fields(measurement).get("stage") == "warning"):
+            self.prop(event, "applicable_threshold", "missing", [measurement],
+                      "本检查项按适用报告内监测技术的完整等级条件判定；单个数值与简单阈值的比较不能证明触发，待独立核对版本、等级分支和班次或探头条件")
+            return None
         mf = _fields(measurement)
         when = _day(measurement.get("time"))
         q = _quantity(mf)
@@ -676,7 +684,7 @@ class _Check:
             self.gap("orphan event/workface facts could not be evaluated")
         if self.findings:
             return self.result("no_pass", "实际证据证明至少一项必要条件不满足")
-        if self.version_conflicts:
+        if any(_affected_by_conflict(p, _conflict_relations(self.snapshot)) for p in self.propositions):
             return self.result("unverifiable", "存在内容版本冲突，相关结论无法确定")
         unreadable = any(f.get("state") == "unreadable" for f in self.snapshot.get("coverage", []))
         unreadable = unreadable or any(str(g).lower().find("unreadable") >= 0 or "requires_ocr" in str(g) for g in self.gaps)
@@ -707,7 +715,10 @@ def classify_stop_findings(result, snapshot):
     by_event = {}
     for prop in result.get("propositions", []):
         by_event.setdefault((prop.get("event_id"), prop.get("workface")), {}).setdefault(prop.get("code"), []).append(prop)
-    facts = snapshot.get("facts", [])
+    conflicted_facts = {item.get("fact_id") for relation in _conflict_relations(snapshot)
+                        for item in relation.get("differences", [])}
+    facts = [fact for fact in snapshot.get("facts", [])
+             if fact.get("fact_id") not in conflicted_facts]
     weak_facts = {link.get("fact_id") for link in snapshot.get("association_links", []) if link.get("temporal_partition")}
     weak_refs = {ref for fact in facts if fact.get("fact_id") in weak_facts for ref in fact.get("evidence_refs", [])}
     findings, uncertain = [], []
@@ -799,21 +810,26 @@ def classify_stop_findings(result, snapshot):
     elif "suspected_violation" in grades:
         result.update(status="no_pass", description="疑似违规，不单独套用本项重大隐患条款",
                       classification="suspected_violation", human_confirmation_required=False)
-    elif result.get("version_conflicts"):
-        result.update(status="unverifiable", description="存在来源版本冲突，待人工复核", classification="review_required")
+    elif result.get("conflict_affected_propositions"):
+        result.update(status="unverifiable", description="存在事实证据冲突，相关命题待人工复核", classification="review_required")
     elif any(row.get("state") == "unreadable" for row in snapshot.get("coverage", [])):
         result.update(status="unverifiable", description="必要内容不可读，待人工复核", classification="review_required")
     elif result.get("coverage_gaps") or not result.get("propositions") or any(p.get("state") != "true" for p in result["propositions"]):
         result.update(status="pending", description="待补证/人工复核", classification="review_required")
     else:
         result.update(status="pass", description="本次事件未发现相应问题", classification="no_issue_observed")
-    result["detail"] = "按用户确认的三步规则核对；疑似重大事故隐患仅为需人工确认的候选，缺证不作未实施判断。"
+    if result.get("conflict_affected_propositions"):
+        result["detail"] = "已识别到同一事实坐标的互斥记录；相关命题已隔离，需按来源文件和原文定位人工复核。"
+    else:
+        result["detail"] = "按用户确认的三步规则核对；疑似重大事故隐患仅为需人工确认的候选，缺证不作未实施判断。"
     return result
 
 
 def evaluate_documents(run, snapshot):
     """Evaluate registered local facts; schema/ownership errors are technical errors."""
     assert_snapshot_owner(snapshot, run)
+    if "source_relations" not in snapshot:
+        snapshot = {**snapshot, "source_relations": analyze_source_relations(snapshot)}
     handler = (run["spec"].get("inspection_item") or {}).get("handler", run["spec"]["item_code"])
     if handler not in {"stop_work_unload", "relief_effects"}:
         raise InvalidRequest("unsupported statutory rule")
@@ -821,21 +837,30 @@ def evaluate_documents(run, snapshot):
 
 
 def _conflicted_evidence(snapshot):
-    """Identify evidence tied to differing bytes for one report date/category."""
-    files = {f.get("file_id"): f for f in snapshot.get("files", []) if f.get("file_id")}
-    groups = {}
-    for file_id, file in files.items():
-        day = file.get("report_date") or (file.get("source_metadata") or {}).get("report_date")
-        category = file.get("material_group") or (file.get("source_metadata") or {}).get("material_group")
-        digest = file.get("content_hash")
-        if day and category and digest:
-            groups.setdefault((day, category), []).append((file_id, digest))
-    conflicted_files = set()
-    for members in groups.values():
-        if len({digest for _, digest in members}) > 1:
-            conflicted_files.update(file_id for file_id, _ in members)
-    evidence = {e.get("evidence_id"): e for e in snapshot.get("evidence", [])}
-    return {eid for eid, entry in evidence.items() if entry.get("file_id") in conflicted_files}
+    """Return evidence refs from explicit, same-fact contradictions only.
+
+    File dates, material groups, names, and byte hashes describe source
+    relationships. They do not establish that two business facts conflict.
+    ``source_relations`` is produced after fact association and is the only
+    input accepted here.
+    """
+    relations = snapshot.get("source_relations") or {}
+    return {ref for relation in relations.get("relations", [])
+            if relation.get("kind") == "fact_conflict"
+            for ref in relation.get("evidence_refs", [])}
+
+
+def _conflict_relations(snapshot):
+    return [relation for relation in (snapshot.get("source_relations") or {}).get("relations", [])
+            if relation.get("kind") == "fact_conflict"]
+
+
+def _affected_by_conflict(proposition, relations):
+    return any((proposition.get("event_id"), proposition.get("workface")) ==
+               (relation.get("context", {}).get("event_id"), relation.get("context", {}).get("workface"))
+               and proposition.get("code") in relation.get("proposition_codes", [])
+               and bool(set(proposition.get("evidence_refs", [])) & set(relation.get("evidence_refs", [])))
+               for relation in relations)
 
 
 def gate_conflicted_evidence(result, snapshot):
@@ -847,42 +872,61 @@ def gate_conflicted_evidence(result, snapshot):
     """
     import copy
     gated = copy.deepcopy(result)
+    if "source_relations" not in snapshot:
+        snapshot = {**snapshot, "source_relations": analyze_source_relations(snapshot)}
+    relations = snapshot["source_relations"]
+    gated["source_relations"] = copy.deepcopy(relations)
     conflicted = _conflicted_evidence(snapshot)
+    fact_relations = _conflict_relations(snapshot)
     if not conflicted:
         return gated
-    gated["version_conflicts"] = sorted(set(gated.get("version_conflicts", [])) | conflicted)
-    dependent_events = {(fact.get("event_id"), fact.get("workface"))
-                        for fact in snapshot.get("facts", [])
-                        if fact.get("kind") == "event" and set(fact.get("evidence_refs", [])) & conflicted}
-    dependent_events.update((p.get("event_id"), p.get("workface"))
+    gated["version_conflicts"] = sorted(conflicted)
+    dependent_events = {(p.get("event_id"), p.get("workface"))
                             for p in gated.get("propositions", [])
                             if p.get("code") in {"trigger", "threshold_trigger"}
-                            and set(p.get("evidence_refs", [])) & conflicted)
+                            and _affected_by_conflict(p, fact_relations)}
     findings, kept = [], []
     for finding in gated.get("findings", []):
-        if (set(finding.get("evidence_refs", [])) & conflicted
+        if (_affected_by_conflict(finding, fact_relations)
                 or (finding.get("event_id"), finding.get("workface")) in dependent_events):
             candidate = {**finding, "status": "candidate", "state": "missing"}
             kept.append(candidate)
         else:
             findings.append(finding)
     gated["findings"] = findings
-    gated["candidate_findings"] = gated.get("candidate_findings", []) + kept
-    affected = bool(kept) or any(set(p.get("evidence_refs", [])) & conflicted
+    gated["candidate_findings"] = gated.get("candidate_findings", []) + [f for f in kept if f not in gated.get("candidate_findings", [])]
+    affected = bool(kept) or any(_affected_by_conflict(p, fact_relations)
                                for p in gated.get("propositions", []))
+    affected_rows = []
     for proposition in gated.get("propositions", []):
-        if (set(proposition.get("evidence_refs", [])) & conflicted
-                or (proposition.get("event_id"), proposition.get("workface")) in dependent_events) and proposition.get("state") in {"true", "false"}:
-            proposition["state"] = "missing"
+        if (_affected_by_conflict(proposition, fact_relations)
+                or (proposition.get("event_id"), proposition.get("workface")) in dependent_events):
+            if proposition.get("state") in {"true", "false"}:
+                proposition["state"] = "missing"
             affected = True
-            proposition["detail"] = (proposition.get("detail", "") + "; " + "同一资料日期和类别存在不同内容版本，相关结论暂缓确定性判断").strip("; ")
+            note = "同一事实存在互斥记录，相关命题待人工复核"
+            if note not in proposition.get("detail", ""):
+                proposition["detail"] = (proposition.get("detail", "") + "; " + note).strip("; ")
+            affected_rows.append({key: proposition.get(key) for key in ("code", "event_id", "workface")})
+    gated["conflict_affected_propositions"] = affected_rows
+    for relation in gated["source_relations"]["relations"]:
+        if relation.get("kind") == "fact_conflict":
+            relation["affected_propositions"] = [row for row in affected_rows if row["code"] in relation.get("proposition_codes", [])
+                and row["event_id"] == relation["context"]["event_id"] and row["workface"] == relation["context"]["workface"]]
+            relation["blocks_verdict"] = bool(relation["affected_propositions"])
     if affected:
-        gap = "同一资料日期和类别存在不同内容版本，相关证据已隔离，不能作确定判断"
+        affected_codes = sorted({code for relation in fact_relations
+                                 for code in relation.get("proposition_codes", [])})
+        gap = "事实证据冲突：" + ("、".join(affected_codes) if affected_codes else "相关命题") + "；已保留双方来源，不能作确定判断"
         gated["coverage_gaps"] = list(dict.fromkeys(gated.get("coverage_gaps", []) + [gap]))
         gated["uncertain_evidence_refs"] = sorted(set(gated.get("uncertain_evidence_refs", [])) | conflicted)
         if "evidence_refs" in gated:
             gated["evidence_refs"] = sorted(set(gated["evidence_refs"]) - conflicted)
     if not findings and affected and gated.get("status") in {"no_pass", "pass"}:
         gated["status"] = "unverifiable"
-        gated["description"] = "存在内容版本冲突，相关结论无法确定"
+        gated["description"] = "存在事实证据冲突，相关命题待人工复核"
+        relation_files = sorted({file_id for relation in fact_relations
+                                 for file_id in relation.get("file_ids", [])})
+        gated["detail"] = ("同一事件、对象和适用时间的已验证记录出现互斥值；"
+                            f"涉及 {len(relation_files)} 份来源，需人工核对原文后再定版。")
     return gated

@@ -118,6 +118,10 @@ class RunResult(BaseModel):
     run_id: str
     item_code: str
     status: ResultStatus
+    decision_class: str | None = None
+    decision_summary: str = ""
+    processing_state: str | None = None
+    classification: str | None = None
     description: str
     detail: str
     evidence_refs: list[str] = Field(default_factory=list)

@@ -38,6 +38,44 @@ def evaluate(records, **overrides):
 
 
 class StopWorkV3Tests(unittest.TestCase):
+    def test_trigger_review_keeps_dynamic_threshold_and_monitoring_candidates_separate(self):
+        run, snapshot = run_snapshot("stop_work_unload", chain(warning=True, relief=True))
+        run["mine_id"] = "M1"
+        run["check_cycle"] = "2026-10"
+        run["item_code"] = "stop_work_unload"
+        run["source_system"] = "local"
+        run["environment"] = "local"
+        result = evaluate_native_run(run, snapshot)
+        self.assertIn("trigger_review", result)
+        self.assertIsNone(result["trigger_review"]["trigger"])
+        self.assertFalse(result["trigger_review"]["verified"])
+        self.assertIn("threshold_profiles", result["trigger_review"])
+        self.assertIn("monitoring_candidates", result["trigger_review"])
+
+    def test_trigger_review_uses_only_relevant_material_groups(self):
+        run, snapshot = run_snapshot("stop_work_unload", chain(warning=True, relief=True))
+        run.update(mine_id="M1", check_cycle="2026-10", item_code="stop_work_unload",
+                   source_system="local", environment="local")
+        text = "地音监测预警指标 c.中 单个探头连续两个班均100%≤dev<200%。"
+        snapshot["files"] = [
+            {"file_id": "threshold-file", "content_hash": "threshold-hash", "material_group": "threshold"},
+            {"file_id": "daily-file", "content_hash": "daily-hash", "material_group": "prevention_daily"},
+            {"file_id": "dispatch-file", "content_hash": "dispatch-hash", "material_group": "dispatch_daily"},
+        ]
+        snapshot["evidence"] = [
+            {**snapshot["evidence"][0], "evidence_id": "t", "file_id": "threshold-file", "content_hash": "threshold-hash",
+             "source_role": "requirement", "text": text, "locator": {"page": 1}},
+            {**snapshot["evidence"][0], "evidence_id": "d", "file_id": "daily-file", "content_hash": "daily-hash",
+             "source_role": "actual_record", "text": "地音 D18 dev=150%", "locator": {"page": 1}},
+            {**snapshot["evidence"][0], "evidence_id": "x", "file_id": "dispatch-file", "content_hash": "dispatch-hash",
+             "source_role": "actual_record", "text": "地音 D19 dev=160%", "locator": {"page": 1}},
+        ]
+        snapshot["facts"] = []
+        result = evaluate_native_run(run, snapshot)
+        review = result["trigger_review"]
+        self.assertEqual([row["document"]["file_id"] for row in review["threshold_profiles"]["documents"]], ["threshold-file"])
+        self.assertTrue(all(row["source"]["file_id"] == "daily-file" for row in review["monitoring_candidates"]["candidates"]))
+
     def test_monitoring_trigger_and_complete_measures_have_no_issue(self):
         result = evaluate(chain(warning=True, relief=True))
         self.assertEqual(result["status"], "pass", result["coverage_gaps"])

@@ -12,6 +12,16 @@
     "evacuate",
     "report"
   ],
+  "retrievalQueries": {
+    "trigger": ["预警", "超限", "动力现象"],
+    "danger_assessment": ["研判", "冲击危险"],
+    "stop": ["停工", "停止作业"],
+    "power_off": ["断电", "停电"],
+    "evacuate": ["撤人", "撤离"],
+    "report": ["报告调度", "调度室"],
+    "relief_measures": ["卸压", "解危"],
+    "continued_after_trigger": ["采掘", "复工"]
+  },
   "propositionGraph": [
     {"code": "danger_confirmed", "dependsOn": ["danger_assessment"]},
     {"code": "warning_danger_confirmed", "dependsOn": ["trigger", "danger_confirmed"]},

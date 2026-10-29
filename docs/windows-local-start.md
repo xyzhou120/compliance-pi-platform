@@ -63,6 +63,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo-task.ps1
 
 本地数据分别位于 `.local/windows.sqlite3`、`.local/artifacts`，不读写旧服务数据库。关闭进程用所在窗口的 Ctrl+C。
 
+任务没有总运行时长截止。30 分钟只是性能目标，运行超过它会继续完成资料处理、检索和评估。旧 `COMPLIANCE_TASK_TIMEOUT`、`PI_DEADLINE_MS` 以及计划/请求中的 deadline 字段不再截断任务。租约心跳和暂停控制持续有效；`PI_MODEL_REQUEST_TIMEOUT_MS`（默认 120000）、OCR 和 PDF 处理超时仅约束单次调用，单次失败会记录原因并继续其他资料。
+
 ## 3. 接入私有 Qwen 与 OCR
 
 复制独立本地配置：

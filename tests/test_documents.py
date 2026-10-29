@@ -1,12 +1,27 @@
 import json
 import tempfile
 import unittest
+from hashlib import sha256
 from pathlib import Path
+from unittest.mock import patch
 
-from apps.control_api.documents import SourceRejected, acquire_run, get_coverage, search_evidence
+from apps.control_api.documents import SourceRejected, acquire_run, get_coverage, search_evidence, render_pages
 
 
 class DocumentTests(unittest.TestCase):
+    def test_failed_pdf_child_is_scoped_to_page_and_next_page_continues(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sample.pdf"
+            path.write_bytes(b"%PDF-synthetic")
+            snapshot = {"files": [{"file_id": "f1", "path": str(path), "format": "pdf", "content_hash": sha256(path.read_bytes()).hexdigest()}]}
+            outcomes = [{"ok": False, "error": "pdf_renderer_child_crashed"},
+                        {"ok": True, "image_bytes": b"\x89PNG\r\n\x1a\nsynthetic"}]
+            with patch("apps.control_api.pdf_renderer.render_pdf_page", side_effect=outcomes) as renderer:
+                result = render_pages(snapshot, [{"file_id": "f1", "page": 1}, {"file_id": "f1", "page": 2}])
+            self.assertEqual(renderer.call_count, 2)
+            self.assertEqual(result["errors"], [{"file_id": "f1", "page": 1, "reason": "pdf_renderer_child_crashed"}])
+            self.assertEqual([image["page"] for image in result["images"]], [2])
+
     def test_freezes_and_indexes_native_text_with_proof_required(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

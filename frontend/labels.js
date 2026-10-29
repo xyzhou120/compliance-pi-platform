@@ -1,6 +1,8 @@
 export const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[char]);
 export const executionLabels = {queued:'排队中',running:'执行中',paused:'已暂停',completed:'已完成',failed:'执行失败'};
 export const resultLabels = {pass:'通过',no_pass:'不通过',pending:'待核验',unverifiable:'无法核验',failed:'技术失败'};
+export const decisionLabels = {issue_found:'已发现问题',no_issue_observed:'未发现问题',review_required:'监察待核验',missing_required_data:'资料不足，无法核验',system_processing_incomplete:'系统处理未完成'};
+export const legacyResultLabels = {...resultLabels, ...decisionLabels, legacy_pending:'历史待处理'};
 export const deliveryLabels = {none:'无需回写',waiting:'等待投递',sending:'投递中',delivered:'已送达',failed:'投递失败'};
 export const candidateLabels = {candidate:'候选待验证',source_bound:'来源已绑定'};
 export const stageLabels = {run:'运行',source:'资料准备',query:'清单查询',parse:'原生解析',recognition:'识别取证',candidates:'候选验证',pi:'Pi 取证',lease:'租约',evaluation:'确定性评估',callback:'结果回写'};
@@ -34,6 +36,10 @@ export function dateText(value) {
  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('zh-CN',{hour12:false});
 }
 export function reasonText(reason) {
+ const processing={pdf_renderer_child_crashed:'PDF渲染子进程异常退出',pdf_renderer_timeout:'PDF页面渲染超时',pdf_renderer_busy:'渲染容量等待超时',page_out_of_range:'页码超出文件范围',page_pixel_budget_exceeded:'页面像素超出处理限制',page_renderer_unavailable:'页面渲染组件不可用',provider_failed:'识别处理失败',parse_file_failed:'文件解析失败',recognize_page_failed:'页面识别失败',run_finalized_before_unit_completed:'本轮结束时该处理未完成'};
+ if(processing[reason])return processing[reason];
+ const conflict = {'事实证据冲突':'资料中的同一事实出现互斥记录，需核对原文','版本候选':'同类资料存在多个版本线索，系统未自动选择最新版','并列资料':'同类资料允许多份并存'};
+ for (const [key,value] of Object.entries(conflict)) if(String(reason).startsWith(key)) return value + String(reason).slice(key.length);
  const known = {pi_execution_disabled:'本轮未启用 Pi 取证',provider_endpoint_missing:'未配置识别服务',semantic_fields_not_independently_verified:'字段语义尚未独立验证',source_bound:'来源已绑定',candidate:'候选待验证',tool_budget_exhausted:'工具调用预算已用尽',tool_failed:'取证工具调用失败',source_complete_false:'资料范围完整性未确认',model_status_ignored:'模型状态声明未采纳'};
  return known[reason] || reason;
 }
